@@ -96,6 +96,7 @@ Resources:
               - "http://127.0.0.1:*"
               - "https://127.0.0.1:*"
               - "https://kteraka.github.io"
+              - "https://trkoh.github.io"
           AccessControlMaxAgeSec: 600
           OriginOverride: true
 

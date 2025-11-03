@@ -1,91 +1,56 @@
-# image-share-app
+# sketch-stacker
 
-Gyazo的な画像アップロード&共有アプリ
+画像アップロード・共有アプリケーション
 
-api Gateway+lambda を介して S3バケット上に画像を保存し、CloudFront 経由で画像にアクセスできるようにする
+## アーキテクチャ
 
+- Backend: AWS (Terraformで管理)
+  - API Gateway + Lambda: Basic認証付き画像アップロード
+  - S3: 画像ストレージ (Glacier Instant Retrieval)
+  - CloudFront: CDN配信
+  - Lambda: S3イベントトリガーでimages.jsonを自動更新
+- Frontend: React (Vite) - GitHub Pagesにデプロイ
 
-# セットアップ
+## 使い方
 
-## アップローダースタック
+### 画像を見る
+https://trkoh.github.io/sketch-stacker/
 
-1. template.yaml を用いて CloudFormation でスタック作成
-2. パラメータに以下を指定
-  3. BasicAuthUsername: 画像アップロード時の Basic 認証時に指定するユーザーネーム
-  4. ImageBucketName: 画像保存先の S3 バケット名
-  5. ImagesJsonFilenamePath: 保存した画像のビュワーをホストする S3 バケット内のファイル名管理用ファイルおよびパス
-  6. ViewerBucketName: 保存した画像のビュワーをホストする S3 バケット名
-7. ViewerBucket 上に viewer フォルダを作成
-  8. index.html の BASE_URL を作成したCloudFrontのものに変更（https://<スタック出力のCloudFrontDomain>）
-  9. viewer フォルダ上に index.html ファイルを配置
+### 画像をアップロード
 
-
-# 使用方法
-```
-% AUTH=$(echo -n '<your Username>:<your AuthPassword>' | base64)
-% IMAGE=$(base64 -i test.png)
-% curl -X POST \
+```bash
+AUTH=$(echo -n 'username:password' | base64)
+IMAGE=$(base64 -i image.png)
+curl -X POST \
   -H "Authorization: Basic $AUTH" \
   -H "Content-Type: application/json" \
   -d "{\"image\": \"$IMAGE\"}" \
-  <スタック出力の ApiEndpoint を指定>
-
-{"url":"<CloudFront の 画像 URL.png>"}
+  https://3p4utkstnb.execute-api.ap-northeast-1.amazonaws.com/prod/upload
 ```
 
-もしくは、Mac OS, iOS のショートカットアプリなどから使用できる
+Mac/iOSショートカット: https://www.icloud.com/shortcuts/e03d33432d5a432e97b38d9063327115
 
-- [Mac OS](https://www.icloud.com/shortcuts/e03d33432d5a432e97b38d9063327115)
-    - 取得した CloudFront の URL をクリップボードにコピーする
-※エンコードしたUsername, Passwordを指定する必要あり
-
-- 保存した画像については、`<CloudFront ドメイン名>/viewer/index.html` にアクセスして確認
-
-# 開発
-
-Claude Codeが提供する Dev Container 環境を使う
-
-## MCP Server セットアップ
-
-このプロジェクトはo3-search-mcpサーバーを使用してOpenAI o3による高度な検索機能を提供します。
+## インフラ管理
 
 ### 前提条件
-- OpenAI APIキー（Tier 4または組織認証が必要）
-- o3またはo3-miniモデルへのアクセス
+```bash
+aws configure sso --profile dev
+aws sso login --profile dev
+```
 
-### セットアップ手順
+### デプロイ
+```bash
+cd terraform
+AWS_PROFILE=dev terraform plan
+AWS_PROFILE=dev terraform apply
+```
 
-1. **環境変数の設定**
-   ```bash
-   # ホスト環境で以下を設定
-   export OPENAI_API_KEY='your-openai-api-key'
-   export OPENAI_MODEL='o3-mini'  # または 'o3'
-   ```
+## ローカル開発
 
-   または `.env.local` ファイルを作成：
-   ```bash
-   cp .env.example .env.local
-   # .env.local を編集してAPIキーを設定
-   ```
+```bash
+cd viewer-react
+npm install
+npm run dev
+```
 
-2. **MCPサーバーの追加**
-   ```bash
-   ./scripts/setup-mcp.sh
-   ```
-
-3. **設定確認**
-   ```bash
-   claude mcp list
-   ```
-
-### 機能
-- OpenAI o3を活用した高度な検索とコンテンツ分析
-- プロジェクト固有の設定（`.mcp.json`で管理）
-- セキュアなAPIキー管理（コンテナ外で管理）
-
-### 📋 詳細ドキュメント
-**完全なセットアップ手順、トラブルシューティング、セキュリティ考慮事項**:
-➡️ **[docs/MCP_SETUP_GUIDE.md](docs/MCP_SETUP_GUIDE.md)**
-
-# 例
-https://d3a21s3joww9j4.cloudfront.net/viewer/index.html
+開発モードではモックデータを使用。本番ビルドはCloudFrontに接続する。
