@@ -44,8 +44,8 @@ aws sso login --profile <profile name>
 
 ```bash
 cd terraform
-AWS_PROFILE=dev terraform plan
-AWS_PROFILE=dev terraform apply
+AWS_PROFILE=<profile name> terraform plan
+AWS_PROFILE=<profile name> terraform apply
 ```
 
 ## ローカル開発
