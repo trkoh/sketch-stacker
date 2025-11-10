@@ -117,7 +117,8 @@ resource "aws_cloudfront_response_headers_policy" "cors" {
         "http://127.0.0.1:*",
         "https://127.0.0.1:*",
         "https://kteraka.github.io",
-        "https://trkoh.github.io"
+        "https://trkoh.github.io",
+        "https://odayakalife.dev"
       ]
     }
 
