@@ -5,58 +5,28 @@ ENV TZ="$TZ"
 
 ARG CLAUDE_CODE_VERSION=latest
 
-# Install basic development tools and iptables/ipset
+# Install only custom tools not provided by Features
+# (git, gh, terraform, aws-cli are now provided by devcontainer features)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-  less \
-  git \
-  procps \
-  sudo \
-  fzf \
-  zsh \
-  man-db \
-  unzip \
-  gnupg2 \
-  gh \
   iptables \
   ipset \
   iproute2 \
   dnsutils \
   aggregate \
   jq \
-  nano \
-  vim \
-  curl \
-  wget \
+  fzf \
+  zsh \
+  sudo \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Install Terraform
-RUN ARCH=$(dpkg --print-architecture) && \
-  TERRAFORM_VERSION=1.5.7 && \
-  wget "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_${ARCH}.zip" && \
-  unzip "terraform_${TERRAFORM_VERSION}_linux_${ARCH}.zip" && \
-  mv terraform /usr/local/bin/ && \
-  chmod +x /usr/local/bin/terraform && \
-  rm "terraform_${TERRAFORM_VERSION}_linux_${ARCH}.zip"
-
-# Install AWS CLI v2
-RUN ARCH=$(dpkg --print-architecture) && \
-  if [ "$ARCH" = "amd64" ]; then AWS_ARCH="x86_64"; else AWS_ARCH="aarch64"; fi && \
-  curl "https://awscli.amazonaws.com/awscli-exe-linux-${AWS_ARCH}.zip" -o "awscliv2.zip" && \
-  unzip awscliv2.zip && \
-  ./aws/install && \
-  rm -rf aws awscliv2.zip
 
 # Ensure default node user has access to /usr/local/share
 RUN mkdir -p /usr/local/share/npm-global && \
   chown -R node:node /usr/local/share
 
-ARG USERNAME=node
-
-# Persist bash history.
-RUN SNIPPET="export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhistory/.bash_history" \
-  && mkdir /commandhistory \
-  && touch /commandhistory/.bash_history \
-  && chown -R $USERNAME /commandhistory
+# Persist bash history
+RUN mkdir /commandhistory && \
+  touch /commandhistory/.bash_history && \
+  chown -R node:node /commandhistory
 
 # Set `DEVCONTAINER` environment variable to help with orientation
 ENV DEVCONTAINER=true
@@ -70,7 +40,7 @@ WORKDIR /workspace
 ARG GIT_DELTA_VERSION=0.18.2
 RUN ARCH=$(dpkg --print-architecture) && \
   wget "https://github.com/dandavison/delta/releases/download/${GIT_DELTA_VERSION}/git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" && \
-  sudo dpkg -i "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" && \
+  dpkg -i "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" && \
   rm "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb"
 
 # Set up non-root user
@@ -110,16 +80,7 @@ RUN git clone https://github.com/yoshiko-pg/o3-search-mcp.git /tmp/o3-search-mcp
     npm install -g o3-search-mcp-*.tgz && \
     rm -rf /tmp/o3-search-mcp
 
-
-# Copy and set up firewall script
-# COPY init-firewall.sh /usr/local/bin/
-# USER root
-# RUN chmod +x /usr/local/bin/init-firewall.sh && \
-#   echo "node ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh" > /etc/sudoers.d/node-firewall && \
-#   chmod 0440 /etc/sudoers.d/node-firewall
-# USER node
-
-# custom-firewall.sh に対応
+# Copy and set up custom firewall script
 COPY custom-firewall.sh /usr/local/bin/
 USER root
 RUN chmod +x /usr/local/bin/custom-firewall.sh && \
