@@ -53,4 +53,5 @@ curl -X POST \
   - S3: 画像ストレージ (Glacier Instant Retrieval)
   - CloudFront: CDN 配信
   - Lambda: S3 イベントトリガーで images.json を自動更新
-- Frontend: React (Vite) — GitHub Pages にデプロイ
+- Frontend: React
+- デプロイ: GitHub Action, GitHub Pages
