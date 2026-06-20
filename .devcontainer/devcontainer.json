@@ -85,7 +85,5 @@
       "label": "Vite Dev Server",
       "onAutoForward": "notify"
     }
-  },
-  "postStartCommand": "sudo /workspace/.devcontainer/custom-firewall.sh",
-  "waitFor": "postStartCommand"
+  }
 }

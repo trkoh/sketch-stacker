@@ -62,3 +62,6 @@ terraform/terraform.tfstate.*.backup
 terraform/*.tfvars
 terraform/*.auto.tfvars
 terraform/lambda_*.zip
+
+# Session scratch (not part of the project)
+conversation-log.md
