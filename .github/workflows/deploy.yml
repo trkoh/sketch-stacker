@@ -25,7 +25,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
           cache: 'npm'
           cache-dependency-path: viewer-react/package-lock.json
 
@@ -33,6 +33,11 @@ jobs:
         run: |
           cd viewer-react
           npm ci
+
+      - name: Lint
+        run: |
+          cd viewer-react
+          npm run lint
 
       - name: Build
         run: |
@@ -48,6 +53,8 @@ jobs:
           path: viewer-react/dist
 
   deploy:
+    # PRでは公開しない。main への push（マージ含む）時だけ本番公開する
+    if: github.event_name == 'push'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

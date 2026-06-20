@@ -18,7 +18,7 @@ export default defineConfig({
           proxy.on('error', (err) => {
             console.log('Proxy error:', err);
           });
-          proxy.on('proxyRes', (proxyRes, req, res) => {
+          proxy.on('proxyRes', (proxyRes) => {
             // CORS ヘッダーを追加
             proxyRes.headers['access-control-allow-origin'] = '*';
             proxyRes.headers['access-control-allow-methods'] = 'GET,HEAD,OPTIONS';
