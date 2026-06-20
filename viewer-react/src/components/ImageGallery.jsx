@@ -15,6 +15,8 @@ const ImageGallery = () => {
   // 管理モード: 認証情報はメモリ上のみ保持（localStorageには残さない＝再読込で消える）
   const [admin, setAdmin] = useState(null);
   const [adminForm, setAdminForm] = useState({ open: false, username: '', password: '' });
+  // 管理UIはURLに ?admin が付いている時だけ表示（一般訪問者には一切出さない）。実際のガードはAPI側のBasic認証。
+  const [adminUnlocked] = useState(() => new URLSearchParams(window.location.search).has('admin'));
 
   // 設定
   const BASE_URL = "https://d3a21s3joww9j4.cloudfront.net/";
@@ -147,7 +149,8 @@ const ImageGallery = () => {
 
   return (
     <>
-      {/* 管理モード（削除操作用。認証情報はメモリのみ保持） */}
+      {/* 管理UI: URLに ?admin が付いている時だけ表示。一般訪問者には何も出さない */}
+      {adminUnlocked && (
       <div className="admin-bar" style={{ margin: '8px 0', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         {!admin && !adminForm.open && (
           <button style={adminBtnStyle} onClick={() => setAdminForm({ ...adminForm, open: true })}>
@@ -182,6 +185,7 @@ const ImageGallery = () => {
           </>
         )}
       </div>
+      )}
 
       {/* Contribution Calendar */}
       <ContributionCalendar images={images} />
