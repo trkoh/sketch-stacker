@@ -52,9 +52,9 @@ variable "cloudfront_distribution_id" {
 }
 
 variable "admin_allowed_origin" {
-  description = "Origin allowed to call the delete API from the browser (admin gallery on GitHub Pages)"
+  description = "Origin allowed to call the delete API from the browser (admin gallery)"
   type        = string
-  default     = "https://trkoh.github.io"
+  default     = "https://odayakalife.dev"
 }
 
 # Common tags for all resources

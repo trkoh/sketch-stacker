@@ -134,12 +134,23 @@ const ImageGallery = () => {
     350: 1
   };
 
+  // 管理バー用のボタンスタイル（画像オーバーレイ用 .ctrl-btn は非表示制御が入るため流用しない）
+  const adminBtnStyle = {
+    padding: '6px 12px',
+    background: '#333',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 4,
+    cursor: 'pointer',
+    fontSize: '0.85rem'
+  };
+
   return (
     <>
       {/* 管理モード（削除操作用。認証情報はメモリのみ保持） */}
       <div className="admin-bar" style={{ margin: '8px 0', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         {!admin && !adminForm.open && (
-          <button className="ctrl-btn" onClick={() => setAdminForm({ ...adminForm, open: true })}>
+          <button style={adminBtnStyle} onClick={() => setAdminForm({ ...adminForm, open: true })}>
             管理モード
           </button>
         )}
@@ -158,8 +169,8 @@ const ImageGallery = () => {
               value={adminForm.password}
               onChange={e => setAdminForm({ ...adminForm, password: e.target.value })}
             />
-            <button className="ctrl-btn" type="submit">有効化</button>
-            <button className="ctrl-btn" type="button" onClick={() => setAdminForm({ open: false, username: '', password: '' })}>
+            <button style={adminBtnStyle} type="submit">有効化</button>
+            <button style={adminBtnStyle} type="button" onClick={() => setAdminForm({ open: false, username: '', password: '' })}>
               キャンセル
             </button>
           </form>
@@ -167,7 +178,7 @@ const ImageGallery = () => {
         {admin && (
           <>
             <span style={{ color: '#c0392b', fontWeight: 'bold' }}>● 管理モード（削除可能）</span>
-            <button className="ctrl-btn" onClick={disableAdmin}>解除</button>
+            <button style={adminBtnStyle} onClick={disableAdmin}>解除</button>
           </>
         )}
       </div>

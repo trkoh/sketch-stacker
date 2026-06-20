@@ -454,6 +454,7 @@ resource "aws_api_gateway_deployment" "main" {
       aws_api_gateway_integration.image_delete.id,
       aws_api_gateway_method.image_options.id,
       aws_api_gateway_integration.image_options.id,
+      var.admin_allowed_origin, # originを変えたらプリフライト応答を再デプロイさせる
     ]))
   }
 
