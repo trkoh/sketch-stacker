@@ -79,10 +79,45 @@ resource "aws_s3_bucket_notification" "image_bucket" {
 
   lambda_function {
     lambda_function_arn = aws_lambda_function.update_images_json.arn
-    events              = ["s3:ObjectCreated:*"]
+    events              = ["s3:ObjectCreated:*", "s3:ObjectRemoved:*"]
+    # 画像(.png)のアップロード/削除のみトリガー。images.json(.json)の書き戻しでは発火させず自己再帰を防ぐ
+    filter_suffix       = ".png"
   }
 
   depends_on = [aws_lambda_permission.s3_invoke_update_lambda]
+}
+
+# 削除を復旧可能なソフト削除にするためバージョニングを有効化
+resource "aws_s3_bucket_versioning" "image_bucket" {
+  bucket = aws_s3_bucket.image_bucket.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+# 削除（削除マーカー）と旧バージョンを一定期間後に自動で恒久削除し、無制限な蓄積を防ぐ
+resource "aws_s3_bucket_lifecycle_configuration" "image_bucket" {
+  bucket = aws_s3_bucket.image_bucket.id
+
+  rule {
+    id     = "expire-noncurrent-versions-and-delete-markers"
+    status = "Enabled"
+
+    filter {} # バケット内全オブジェクトに適用
+
+    # 上書き・削除でnoncurrentになった旧バージョンを30日で恒久削除
+    noncurrent_version_expiration {
+      noncurrent_days = 30
+    }
+
+    # 実体が全てnoncurrentになり残った削除マーカーを掃除
+    expiration {
+      expired_object_delete_marker = true
+    }
+  }
+
+  depends_on = [aws_s3_bucket_versioning.image_bucket]
 }
 
 # =====================================================================================
@@ -413,6 +448,12 @@ resource "aws_api_gateway_deployment" "main" {
       aws_api_gateway_method.upload_post.id,
       aws_api_gateway_integration.upload.id,
       aws_api_gateway_authorizer.basic_auth.id,
+      aws_api_gateway_resource.images.id,
+      aws_api_gateway_resource.image_key.id,
+      aws_api_gateway_method.image_delete.id,
+      aws_api_gateway_integration.image_delete.id,
+      aws_api_gateway_method.image_options.id,
+      aws_api_gateway_integration.image_options.id,
     ]))
   }
 
@@ -454,4 +495,160 @@ resource "aws_lambda_permission" "s3_invoke_update_lambda" {
   principal     = "s3.amazonaws.com"
   source_arn    = aws_s3_bucket.image_bucket.arn
   source_account = data.aws_caller_identity.current.account_id
+}
+
+# =====================================================================================
+# DELETE FEATURE (Phase 2): delete Lambda + DELETE /images/{key} + CORS preflight
+# =====================================================================================
+data "archive_file" "delete_lambda" {
+  type        = "zip"
+  output_path = "lambda_delete.zip"
+  source_dir  = "lambda-functions/delete"
+}
+
+resource "aws_iam_role" "delete_lambda_execution" {
+  name = "${var.stack_name}-DeleteLambdaExecutionRole"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = { Service = "lambda.amazonaws.com" }
+        Action    = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  inline_policy {
+    name = "${var.stack_name}DeleteS3Policy"
+    policy = jsonencode({
+      Version = "2012-10-17"
+      Statement = [
+        {
+          Effect   = "Allow"
+          Action   = ["s3:DeleteObject"]
+          Resource = "${aws_s3_bucket.image_bucket.arn}/*"
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+          Resource = "arn:aws:logs:*:*:*"
+        }
+      ]
+    })
+  }
+
+  tags = var.stack_tags
+}
+
+resource "aws_lambda_function" "delete" {
+  function_name = "${var.stack_name}-DeleteFunction"
+  handler       = "index.handler"
+  role          = aws_iam_role.delete_lambda_execution.arn
+  runtime       = "nodejs22.x"
+  timeout       = 10
+
+  filename         = data.archive_file.delete_lambda.output_path
+  source_code_hash = data.archive_file.delete_lambda.output_base64sha256
+
+  environment {
+    variables = {
+      BUCKET_NAME    = aws_s3_bucket.image_bucket.id
+      ALLOWED_ORIGIN = var.admin_allowed_origin
+    }
+  }
+
+  tags = var.stack_tags
+}
+
+# /images
+resource "aws_api_gateway_resource" "images" {
+  parent_id   = aws_api_gateway_rest_api.main.root_resource_id
+  path_part   = "images"
+  rest_api_id = aws_api_gateway_rest_api.main.id
+}
+
+# /images/{key}
+resource "aws_api_gateway_resource" "image_key" {
+  parent_id   = aws_api_gateway_resource.images.id
+  path_part   = "{key}"
+  rest_api_id = aws_api_gateway_rest_api.main.id
+}
+
+# DELETE /images/{key} （Basic認証はアップロードと同じカスタムオーソライザを再利用）
+resource "aws_api_gateway_method" "image_delete" {
+  http_method   = "DELETE"
+  resource_id   = aws_api_gateway_resource.image_key.id
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  authorization = "CUSTOM"
+  authorizer_id = aws_api_gateway_authorizer.basic_auth.id
+
+  request_parameters = {
+    "method.request.path.key" = true
+  }
+}
+
+resource "aws_api_gateway_integration" "image_delete" {
+  http_method             = aws_api_gateway_method.image_delete.http_method
+  resource_id             = aws_api_gateway_resource.image_key.id
+  rest_api_id             = aws_api_gateway_rest_api.main.id
+  type                    = "AWS_PROXY"
+  integration_http_method = "POST"
+  uri                     = "arn:aws:apigateway:${data.aws_region.current.name}:lambda:path/2015-03-31/functions/${aws_lambda_function.delete.arn}/invocations"
+}
+
+# OPTIONS /images/{key} （ブラウザのCORSプリフライト。認証不要のMOCK応答）
+resource "aws_api_gateway_method" "image_options" {
+  http_method   = "OPTIONS"
+  resource_id   = aws_api_gateway_resource.image_key.id
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "image_options" {
+  http_method = aws_api_gateway_method.image_options.http_method
+  resource_id = aws_api_gateway_resource.image_key.id
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  type        = "MOCK"
+
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "image_options" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.image_key.id
+  http_method = aws_api_gateway_method.image_options.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "image_options" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.image_key.id
+  http_method = aws_api_gateway_method.image_options.http_method
+  status_code = aws_api_gateway_method_response.image_options.status_code
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Authorization,Content-Type'"
+    "method.response.header.Access-Control-Allow-Methods" = "'DELETE,OPTIONS'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'${var.admin_allowed_origin}'"
+  }
+
+  depends_on = [aws_api_gateway_integration.image_options]
+}
+
+resource "aws_lambda_permission" "api_gateway_invoke_delete" {
+  statement_id  = "AllowExecutionFromAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.delete.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*/*"
 }

@@ -12,10 +12,14 @@ const ImageGallery = () => {
   const [modalImageUrl, setModalImageUrl] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  // 管理モード: 認証情報はメモリ上のみ保持（localStorageには残さない＝再読込で消える）
+  const [admin, setAdmin] = useState(null);
+  const [adminForm, setAdminForm] = useState({ open: false, username: '', password: '' });
 
   // 設定
   const BASE_URL = "https://d3a21s3joww9j4.cloudfront.net/";
   const JSON_URL = "https://d3a21s3joww9j4.cloudfront.net/viewer/images.json";
+  const API_BASE = "https://3p4utkstnb.execute-api.ap-northeast-1.amazonaws.com/prod";
   const EXCLUDE = ["viewer/", "viewer/index.html", "viewer/images.json"];
   const INITIAL_COUNT = 20;
 
@@ -38,12 +42,12 @@ const ImageGallery = () => {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       const files = await response.json();
-      
+
       // フィルタリングとソート
       const filteredFiles = files
         .filter(name => !EXCLUDE.includes(name))
         .sort((a, b) => b.localeCompare(a)); // 降順（新しい順）
-      
+
       setImages(filteredFiles);
       setDisplayedImages(filteredFiles.slice(0, INITIAL_COUNT));
     } catch (err) {
@@ -58,7 +62,7 @@ const ImageGallery = () => {
     const currentCount = displayedImages.length;
     const nextBatch = images.slice(currentCount, currentCount + INITIAL_COUNT);
     setDisplayedImages([...displayedImages, ...nextBatch]);
-    
+
     if (currentCount + INITIAL_COUNT >= images.length) {
       setShowAll(true);
     }
@@ -72,6 +76,43 @@ const ImageGallery = () => {
   const handleModalClose = () => {
     setModalOpen(false);
     setModalImageUrl('');
+  };
+
+  // 管理モードを有効化（認証情報をメモリに保持。ページを閉じれば消える）
+  const enableAdmin = (e) => {
+    e.preventDefault();
+    if (!adminForm.username || !adminForm.password) return;
+    setAdmin({ username: adminForm.username, password: adminForm.password });
+    setAdminForm({ open: false, username: '', password: '' });
+  };
+
+  const disableAdmin = () => setAdmin(null);
+
+  // 画像を削除（Basic認証付きで DELETE API を呼ぶ）
+  const handleDelete = async (imageName) => {
+    if (!admin) return;
+    if (!window.confirm(`この画像を削除しますか？\n${imageName}\n\n（バージョニングにより一定期間は復旧可能です）`)) return;
+    try {
+      const res = await fetch(`${API_BASE}/images/${encodeURIComponent(imageName)}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': 'Basic ' + btoa(`${admin.username}:${admin.password}`),
+        },
+      });
+      if (res.status === 401 || res.status === 403) {
+        alert('認証に失敗しました。ユーザー名・パスワードを確認してください。');
+        return;
+      }
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      // 成功したらUIから即座に除去
+      setImages(prev => prev.filter(n => n !== imageName));
+      setDisplayedImages(prev => prev.filter(n => n !== imageName));
+    } catch (err) {
+      console.error("削除失敗", err);
+      alert(`削除に失敗しました: ${err.message}`);
+    }
   };
 
   if (loading) {
@@ -95,9 +136,45 @@ const ImageGallery = () => {
 
   return (
     <>
+      {/* 管理モード（削除操作用。認証情報はメモリのみ保持） */}
+      <div className="admin-bar" style={{ margin: '8px 0', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        {!admin && !adminForm.open && (
+          <button className="ctrl-btn" onClick={() => setAdminForm({ ...adminForm, open: true })}>
+            管理モード
+          </button>
+        )}
+        {!admin && adminForm.open && (
+          <form onSubmit={enableAdmin} style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
+            <input
+              placeholder="ユーザー名"
+              autoComplete="username"
+              value={adminForm.username}
+              onChange={e => setAdminForm({ ...adminForm, username: e.target.value })}
+            />
+            <input
+              type="password"
+              placeholder="パスワード"
+              autoComplete="current-password"
+              value={adminForm.password}
+              onChange={e => setAdminForm({ ...adminForm, password: e.target.value })}
+            />
+            <button className="ctrl-btn" type="submit">有効化</button>
+            <button className="ctrl-btn" type="button" onClick={() => setAdminForm({ open: false, username: '', password: '' })}>
+              キャンセル
+            </button>
+          </form>
+        )}
+        {admin && (
+          <>
+            <span style={{ color: '#c0392b', fontWeight: 'bold' }}>● 管理モード（削除可能）</span>
+            <button className="ctrl-btn" onClick={disableAdmin}>解除</button>
+          </>
+        )}
+      </div>
+
       {/* Contribution Calendar */}
       <ContributionCalendar images={images} />
-      
+
       <Masonry
         breakpointCols={breakpointColumns}
         className="gallery"
@@ -109,19 +186,21 @@ const ImageGallery = () => {
             imageName={imageName}
             baseUrl={BASE_URL}
             onImageClick={handleImageClick}
+            adminMode={!!admin}
+            onDelete={handleDelete}
           />
         ))}
       </Masonry>
-      
+
       {hasMoreImages && (
-        <button 
-          className="load-more" 
+        <button
+          className="load-more"
           onClick={handleLoadMore}
         >
           Load More ({Math.min(INITIAL_COUNT, images.length - displayedImages.length)} more)
         </button>
       )}
-      
+
       <Modal
         isOpen={modalOpen}
         imageUrl={modalImageUrl}

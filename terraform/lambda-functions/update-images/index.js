@@ -8,9 +8,21 @@ exports.handler = async (event) => {
   const fileName = process.env.IMAGES_JSON_FILENAME_PATH;
 
   try {
-    const listObjectsCommand = new ListObjectsV2Command({ Bucket: imageBucket });
-    const listObjectsResponse = await s3Client.send(listObjectsCommand);
-    const fileNames = listObjectsResponse.Contents.map(object => object.Key);
+    // ページネーションで全オブジェクトを取得（ListObjectsV2の1000件上限対策）
+    const fileNames = [];
+    let continuationToken;
+    do {
+      const listObjectsResponse = await s3Client.send(new ListObjectsV2Command({
+        Bucket: imageBucket,
+        ContinuationToken: continuationToken,
+      }));
+      for (const object of listObjectsResponse.Contents || []) {
+        fileNames.push(object.Key);
+      }
+      continuationToken = listObjectsResponse.IsTruncated
+        ? listObjectsResponse.NextContinuationToken
+        : undefined;
+    } while (continuationToken);
     console.log(fileNames);
 
     const jsonData = JSON.stringify(fileNames, null, 2);

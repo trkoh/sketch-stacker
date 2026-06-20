@@ -1,6 +1,4 @@
-import { useState } from 'react';
-
-const ImageItem = ({ imageName, baseUrl, onImageClick }) => {
+const ImageItem = ({ imageName, baseUrl, onImageClick, adminMode, onDelete }) => {
   const extractTimestamp = (name) => {
     const m = name.match(/(\d{10,13})(?=\.[A-Za-z]+$)/);
     if (!m) return null;
@@ -11,13 +9,13 @@ const ImageItem = ({ imageName, baseUrl, onImageClick }) => {
   const unixToDateString = (sec) => {
     const d = new Date(sec * 1000);
     return d.toLocaleDateString("ja-JP", {
-      year: "numeric", 
-      month: "2-digit", 
+      year: "numeric",
+      month: "2-digit",
       day: "2-digit"
     }) + " " +
     d.toLocaleTimeString("ja-JP", {
-      hour: "2-digit", 
-      minute: "2-digit", 
+      hour: "2-digit",
+      minute: "2-digit",
       hour12: false
     });
   };
@@ -38,6 +36,11 @@ const ImageItem = ({ imageName, baseUrl, onImageClick }) => {
     onImageClick(getImageUrl());
   };
 
+  const handleDeleteClick = (e) => {
+    e.stopPropagation();
+    onDelete(imageName);
+  };
+
   const getImageUrl = () => {
     return baseUrl + imageName;  // 常にCloudFrontの実際の画像を使用
   };
@@ -52,21 +55,31 @@ const ImageItem = ({ imageName, baseUrl, onImageClick }) => {
         loading="lazy"
         onClick={handleImageClick}
       />
-      
-      <button 
+
+      {adminMode && (
+        <button
+          className="ctrl-btn delete-btn"
+          onClick={handleDeleteClick}
+          style={{ position: 'absolute', top: 4, left: 4, background: '#c0392b', color: '#fff', zIndex: 2 }}
+        >
+          削除
+        </button>
+      )}
+
+      <button
         className="ctrl-btn open-btn"
         onClick={handleOpenImage}
       >
         Open
       </button>
-      
-      <button 
+
+      <button
         className="ctrl-btn copy-btn"
         onClick={handleCopyUrl}
       >
         Copy
       </button>
-      
+
       {timestamp && (
         <span className="date-label">
           {unixToDateString(timestamp)}

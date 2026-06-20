@@ -30,15 +30,11 @@ async function getSecret() {
 }
 
 exports.handler = async (event) => {
-  console.log('Authorization event:', JSON.stringify(event, null, 2));
-
   // iOS Shortcutsは異なるヘッダー形式で送信する可能性があるため、より柔軟に処理
   const authHeader = event.headers.Authorization ||
                      event.headers.authorization ||
                      event.headers['Authorization'] ||
                      event.headers['authorization'];
-
-  console.log('Auth header:', authHeader);
 
   if (!authHeader) {
     console.log('No authorization header found');
@@ -64,13 +60,12 @@ exports.handler = async (event) => {
     // Secrets Managerから認証情報を動的取得
     const credentials = await getSecret();
 
-    console.log('Username:', username);
-    console.log('Expected username:', credentials.username);
-    console.log('Password match:', password === credentials.password);
-
     if (username === credentials.username && password === credentials.password) {
       console.log('Authentication successful');
-      return generatePolicy('user', 'Allow', event.methodArn);
+      // 認証結果はトークン単位でキャッシュされるため、API全体(stage配下)をワイルドカード許可し、
+      // upload と delete など複数メソッドで同じキャッシュを使い回せるようにする
+      const apiWildcardArn = event.methodArn.split('/').slice(0, 2).join('/') + '/*';
+      return generatePolicy('user', 'Allow', apiWildcardArn);
     }
 
     console.log('Authentication failed');
