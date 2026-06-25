@@ -240,13 +240,44 @@ resource "aws_iam_role" "upload_lambda_execution" {
             "s3:PutObject"
           ]
           Resource = "${aws_s3_bucket.image_bucket.arn}/*"
+        }
+      ]
+    })
+  }
+
+  tags = var.stack_tags
+}
+
+# #16: authorizer 専用の実行ロール（upload ロール共有をやめ最小権限化）。
+# 必要なのは Secrets 読み取りと自身のロググループへのログ書き込みのみ。
+resource "aws_iam_role" "authorizer_lambda_execution" {
+  name = "${var.stack_name}-AuthorizerLambdaExecutionRole"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = { Service = "lambda.amazonaws.com" }
+        Action    = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  inline_policy {
+    name = "${var.stack_name}AuthorizerPolicy"
+    policy = jsonencode({
+      Version = "2012-10-17"
+      Statement = [
+        {
+          Effect   = "Allow"
+          Action   = ["secretsmanager:GetSecretValue"]
+          Resource = aws_secretsmanager_secret.basic_auth_password.arn
         },
         {
-          Effect = "Allow"
-          Action = [
-            "secretsmanager:GetSecretValue"
-          ]
-          Resource = aws_secretsmanager_secret.basic_auth_password.arn
+          Effect   = "Allow"
+          Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+          Resource = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/WIPUploader-AuthorizerFunction-7WKXvtdhJ2Lx:*"
         }
       ]
     })
@@ -295,7 +326,7 @@ resource "aws_iam_role" "update_lambda_execution" {
             "logs:CreateLogStream",
             "logs:PutLogEvents"
           ]
-          Resource = "arn:aws:logs:*:*:*"
+          Resource = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/WIPUploaderUpdateImagesJsonFunction:*"
         },
         {
           Effect = "Allow"
@@ -337,7 +368,7 @@ resource "aws_lambda_function" "upload" {
 resource "aws_lambda_function" "authorizer" {
   function_name = "WIPUploader-AuthorizerFunction-7WKXvtdhJ2Lx"  # Preserve CloudFormation name
   handler       = "index.handler"
-  role         = aws_iam_role.upload_lambda_execution.arn
+  role         = aws_iam_role.authorizer_lambda_execution.arn
   runtime      = "nodejs22.x"
 
   filename         = data.archive_file.authorizer_lambda.output_path
@@ -487,6 +518,8 @@ resource "aws_lambda_permission" "api_gateway_invoke_authorizer" {
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.authorizer.function_name
   principal     = "apigateway.amazonaws.com"
+  # #18: 同一アカウントの任意APIから呼べないよう、このAPIのこのauthorizerに限定
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/authorizers/${aws_api_gateway_authorizer.basic_auth.id}"
 }
 
 resource "aws_lambda_permission" "s3_invoke_update_lambda" {
@@ -534,7 +567,7 @@ resource "aws_iam_role" "delete_lambda_execution" {
         {
           Effect   = "Allow"
           Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
-          Resource = "arn:aws:logs:*:*:*"
+          Resource = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.stack_name}-DeleteFunction:*"
         }
       ]
     })
