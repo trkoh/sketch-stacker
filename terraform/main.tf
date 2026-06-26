@@ -494,12 +494,60 @@ resource "aws_api_gateway_deployment" "main" {
   }
 }
 
+# #19: API Gateway アクセスログ（ブルートフォース検知・調査用）。
+# アクセスログ出力にはリージョン単位で API Gateway 用 CloudWatch ロールが必要。
+resource "aws_iam_role" "apigw_cloudwatch" {
+  name = "${var.stack_name}-ApiGatewayCloudWatchRole"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = { Service = "apigateway.amazonaws.com" }
+        Action    = "sts:AssumeRole"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "apigw_cloudwatch" {
+  role       = aws_iam_role.apigw_cloudwatch.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs"
+}
+
+# アカウント単位の設定（リージョンに1つ）。同一アカウントの他APIにもログ機能を有効化しうる点に注意。
+resource "aws_api_gateway_account" "this" {
+  cloudwatch_role_arn = aws_iam_role.apigw_cloudwatch.arn
+}
+
+resource "aws_cloudwatch_log_group" "api_access" {
+  name              = "/aws/apigateway/${var.stack_name}/access"
+  retention_in_days = 30
+}
+
 resource "aws_api_gateway_stage" "prod" {
   deployment_id = aws_api_gateway_deployment.main.id
   rest_api_id   = aws_api_gateway_rest_api.main.id
   stage_name    = "prod"
 
+  access_log_settings {
+    destination_arn = aws_cloudwatch_log_group.api_access.arn
+    format = jsonencode({
+      requestId  = "$context.requestId"
+      ip         = "$context.identity.sourceIp"
+      method     = "$context.httpMethod"
+      path       = "$context.path"
+      status     = "$context.status"
+      authStatus = "$context.authorizer.status"
+      protocol   = "$context.protocol"
+      time       = "$context.requestTime"
+    })
+  }
+
   tags = var.stack_tags
+
+  depends_on = [aws_api_gateway_account.this]
 }
 
 # =====================================================================================
