@@ -530,7 +530,37 @@ resource "aws_lambda_function" "update_images_json" {
 # No data source needed - Lambda fetches secret at runtime for security
 
 # Lambda function ZIP files
+# U2: Lambda の依存を確定的に同梱する。Node22 ランタイムの SDK 同梱は AWS が保証せず
+# (公式は「SDK v3 を含む」止まり・client-bedrock-runtime / client-lambda の同梱は未保証)、
+# 未同梱だと import 時に Runtime.ImportModuleError で関数全体が落ちる。
+# よって apply 時に各関数ディレクトリへ本番依存を npm install してから zip する。
+# node_modules は .gitignore 済み・package-lock.json でバージョン固定(全 @aws-sdk = 3.1075.0)。
+resource "terraform_data" "upload_deps" {
+  triggers_replace = [
+    filesha256("${path.module}/lambda-functions/upload/index.js"),
+    filesha256("${path.module}/lambda-functions/upload/package.json"),
+    filesha256("${path.module}/lambda-functions/upload/package-lock.json"),
+  ]
+  provisioner "local-exec" {
+    working_dir = "${path.module}/lambda-functions/upload"
+    command     = "npm ci --omit=dev --no-audit --no-fund || npm install --omit=dev --no-audit --no-fund"
+  }
+}
+
+resource "terraform_data" "image_enrich_deps" {
+  triggers_replace = [
+    filesha256("${path.module}/lambda-functions/image-enrich/index.js"),
+    filesha256("${path.module}/lambda-functions/image-enrich/package.json"),
+    filesha256("${path.module}/lambda-functions/image-enrich/package-lock.json"),
+  ]
+  provisioner "local-exec" {
+    working_dir = "${path.module}/lambda-functions/image-enrich"
+    command     = "npm ci --omit=dev --no-audit --no-fund || npm install --omit=dev --no-audit --no-fund"
+  }
+}
+
 data "archive_file" "upload_lambda" {
+  depends_on  = [terraform_data.upload_deps] # node_modules を含めるため install 後に zip
   type        = "zip"
   output_path = "lambda_upload.zip"
   source_dir  = "lambda-functions/upload"
@@ -549,6 +579,7 @@ data "archive_file" "update_images_lambda" {
 }
 
 data "archive_file" "image_enrich_lambda" {
+  depends_on  = [terraform_data.image_enrich_deps] # node_modules を含めるため install 後に zip
   type        = "zip"
   output_path = "lambda_image_enrich.zip"
   source_dir  = "lambda-functions/image-enrich"
