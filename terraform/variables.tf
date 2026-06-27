@@ -75,9 +75,14 @@ variable "bedrock_embed_model_id" {
 }
 
 variable "bedrock_tag_model_id" {
-  description = "Bedrock model id for Japanese motif tag generation. MUST be vision-capable (Claude 3 Haiku supports images; 3.5 Haiku does not). Use an inference-profile id (e.g. apac.anthropic.claude-3-haiku-20240307-v1:0) if the region requires it."
+  # 検証(2026-06, us-east-1 実機): Claude 3 Haiku は Legacy 化で InvokeModel 不可、
+  # Claude 3.5系は EOL、Claude 4.5系(Haiku/Sonnet)は active だがアカウントへの Anthropic
+  # 用途フォーム提出が必須。Amazon Nova Lite は提出不要で即動作・低コスト・画像入力対応のため既定に採用。
+  # Claude に切替える場合は用途フォーム提出後、us.* 推論プロファイルID
+  # (例: us.anthropic.claude-haiku-4-5-20251001-v1:0) を指定。enrich は model id 接頭辞で body 形式を分岐。
+  description = "Bedrock model id for Japanese tag generation. MUST be vision-capable. Default amazon.nova-lite-v1:0 (no Anthropic use-case form, low cost, image-capable). For Claude, submit the Anthropic use-case form and set a us.* inference-profile id."
   type        = string
-  default     = "anthropic.claude-3-haiku-20240307-v1:0"
+  default     = "amazon.nova-lite-v1:0"
 }
 
 variable "embedding_dimension" {

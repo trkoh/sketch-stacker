@@ -77,3 +77,18 @@
 
 - **決め手**: 「画像が読める最安のHaiku」。確信度: 中〜高。
 - **可変性**: モデルID/リージョン/次元はTF変数。将来タグ品質を上げたければ ADR追補で上位モデルへ差し替え可。
+
+### ADR-004 改定（2026-06-27・us-east-1 実機検証で上記タグ裁定を覆す）
+机上のモデルカードを信じた当初裁定が**実機で破綻**したため改定。AdministratorAccess で us-east-1 に実 InvokeModel して確認した結果：
+
+| モデル | 実機結果 |
+|---|---|
+| `amazon.nova-2-multimodal-embeddings-v1:0`（埋め込み） | ✅ 同期InvokeModel成功（`embeddings[0].embedding` 返却）。モデルカードの「Invoke非対応」表記は誤り。**埋め込みは変更なし**。 |
+| `anthropic.claude-3-haiku-20240307-v1:0`（旧タグ裁定） | ❌ `ResourceNotFoundException`「This Model is marked by provider as **Legacy** … upgrade to an active model」＝**呼べない** |
+| `anthropic.claude-3-5-sonnet-*`（20240620/20241022, 直/us.） | ❌ 全て「model version has reached **end of life**」 |
+| `us.anthropic.claude-haiku-4-5-*` / `us.anthropic.claude-sonnet-4-5-*` | △ active だが「**Model use case details have not been submitted**」＝アカウントへ Anthropic 用途フォーム提出が必須（コンソール操作・オーナーのみ可）＋`us.`プロファイル必須 |
+| **`amazon.nova-lite-v1:0`**（新タグ裁定） | ✅ **画像→日本語タグJSONを即返却**（用途フォーム不要・低コスト・マルチモーダル・多言語）。実応答例: `["カフェ","コーヒー","食器","テーブル","カップ"]` |
+
+**改定裁定（タグ生成）= `amazon.nova-lite-v1:0`**。理由: Anthropic系は全滅(Legacy/EOL)か用途フォーム待ち(=オーナー操作でブロック)で**今すぐ動かない**。Nova Lite は提出不要で即動作・低コスト・画像入力対応＝憲法「低コスト最優先」にも合致。
+- enrich は `TAG_MODEL_ID` 接頭辞で body 形式を分岐（`amazon.nova*`=messages-v1 / それ以外=Anthropic Messages）。用途フォーム提出後に Claude Haiku 4.5（`us.` プロファイル）へ変数差し替え可能。
+- **教訓**: 可用性・APIサポートはモデルカードを鵜呑みにせず実 InvokeModel で確認する（埋め込みの「Invoke非対応」表記も実機では誤りだった）。

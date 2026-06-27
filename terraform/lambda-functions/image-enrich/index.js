@@ -58,38 +58,65 @@ async function embedImage(b64) {
 }
 
 /**
- * Claude Haiku(Bedrock)で画像から日本語タグを生成する。
+ * Bedrock のマルチモーダルLLMで画像から日本語タグを生成する。
  * ※ wip-uploader にはユーザーの描いた全ジャンルの絵が入りうるため、
  *   画風・題材・構図などをプロンプトで限定しない(中立)。検索しやすい語を自由に拾わせる。
+ *
+ * モデルにより InvokeModel の body/応答形式が異なるため TAG_MODEL_ID の接頭辞で分岐:
+ *  - amazon.nova-*  : Nova messages-v1 形式(用途フォーム不要・現状の既定)
+ *  - それ以外(Claude): Anthropic Messages 形式(要 Anthropic 用途フォーム提出)
+ * 検証(2026-06, us-east-1 実機): Claude 3 Haiku は Legacy 化で呼べず、Claude 4.5系は
+ * アカウントへの Anthropic 用途フォーム提出が必須。Nova Lite は提出不要で即動作するため既定に採用。
  * @param {string} b64 base64エンコード済み画像
  * @returns {Promise<string[]>} 日本語タグ配列(最大 MAX_TAGS 件)
  */
 async function generateTags(b64) {
+  const modelId = process.env.TAG_MODEL_ID;
   const prompt = 'この画像はユーザーが描いた絵です。後で検索で見つけやすくするための日本語タグを付けてください。'
     + `描かれているもの(被写体・モチーフ・場面)、画風や画材、色合い、雰囲気など、その絵を表す語を${MAX_TAGS}個以内で自由に。`
     + 'ジャンルや画風は問わない。短い語で。'
     + 'JSON配列だけを出力(例: ["猫","水彩","暖色"])。説明文は不要。';
-  const body = {
-    anthropic_version: 'bedrock-2023-05-31',
-    max_tokens: 256,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: b64 } },
-          { type: 'text', text: prompt },
+
+  const isNova = modelId.startsWith('amazon.nova');
+  const body = isNova
+    ? {
+        schemaVersion: 'messages-v1',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { image: { format: 'png', source: { bytes: b64 } } },
+              { text: prompt },
+            ],
+          },
         ],
-      },
-    ],
-  };
+        inferenceConfig: { maxTokens: 256 },
+      }
+    : {
+        anthropic_version: 'bedrock-2023-05-31',
+        max_tokens: 256,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: 'image/png', data: b64 } },
+              { type: 'text', text: prompt },
+            ],
+          },
+        ],
+      };
   const res = await bedrock.send(new InvokeModelCommand({
-    modelId: process.env.TAG_MODEL_ID,
+    modelId,
     contentType: 'application/json',
     accept: 'application/json',
     body: JSON.stringify(body),
   }));
   const parsed = JSON.parse(Buffer.from(res.body).toString('utf-8'));
-  const text = (parsed.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
+  // Nova: output.message.content[].text / Claude: content[].text
+  const blocks = isNova
+    ? ((parsed.output && parsed.output.message && parsed.output.message.content) || [])
+    : (parsed.content || []);
+  const text = blocks.filter((b) => typeof b.text === 'string').map((b) => b.text).join('');
   // モデルがコードフェンスや前後文を付けても拾えるよう、最初のJSON配列を抽出する。
   const match = text.match(/\[[\s\S]*\]/);
   if (!match) return [];
