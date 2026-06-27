@@ -45,3 +45,35 @@
 ## 自動タグ公開の反映（Q2回答=公開）
 - 自動タグ(autoTags)は**公開JSONに射影**してギャラリー絞り込みに使う。
 - メモ本文は visibility に従い、公開のみ射影／非公開は認証API経由。
+
+---
+
+## ADR-004：自動タグ生成モデル & Bedrockリージョン（U2・2026-06-27 オーナー裁定）
+
+> 当初 U2 実装時にインラインで決めてしまった判断を、後追いで正式ADR化（手続き上の落ち度の是正）。
+
+### 一次分岐：データ所在の要件 → **「要件なし」と裁定**（画像は既にCloudFrontで全世界公開のため所在を守る実益が無い）
+
+### リージョン可用性（裏取り済み・決定的事実）
+| モデル種別 | 東京(ap-northeast-1) | 出典 |
+|---|---|---|
+| Nova multimodal embeddings | **無し**（us-east-1のみ） | [AWS発表](https://aws.amazon.com/blogs/aws/amazon-nova-multimodal-embeddings-now-available-in-amazon-bedrock/) |
+| Titan Multimodal Embeddings G1 | **無し**（us-east-1 / us-west-2） | [リージョン対応表](https://docs.aws.amazon.com/bedrock/latest/userguide/models-region-compatibility.html) |
+| vision可Claude(jp.*推論プロファイル) | 可(Sonnet4.5/Haiku4.5) | [Japanクロスリージョン推論](https://aws.amazon.com/blogs/machine-learning/introducing-amazon-bedrock-cross-region-inference-for-claude-sonnet-4-5-and-haiku-4-5-in-japan-and-australia/) |
+
+→ **東京にはBedrock製マルチモーダル埋め込みが存在しない**。東京完結は埋め込み(ADR-002=Nova)をCLIPに作り直す設計変更を強いる＝半端で高コスト。所在要件が無い以上、不採用。
+
+### 裁定
+- **Bedrockリージョン = us-east-1**（Nova の唯一の提供地・Claude 3 Haiku もオンデマンド可。Lambda本体は東京、Bedrock呼び出しのみクロスリージョン＝非同期enrichなので体感無影響）。
+- **埋め込み = Nova `amazon.nova-2-multimodal-embeddings-v1:0`**（ADR-002踏襲。日本語200言語が検索の決め手）。
+- **タグ = Claude 3 Haiku `anthropic.claude-3-haiku-20240307-v1:0`**。
+
+### タグモデル比較（vision必須・5000枚バルク・憲法「低コスト最優先」）
+| 候補 | 画像入力 | 提供 | コスト | 判定 |
+|---|---|---|---|---|
+| **Claude 3 Haiku** | 可（[モデルカード](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-anthropic-claude-3-haiku.html)） | us-east-1オンデマンド | 最安（タグ≈$10/5000枚, #21試算） | ✅採用 |
+| Claude 3.5 Haiku | **不可（テキスト専用）** | — | 安 | ✗用途不成立 |
+| Claude 3.5 Sonnet / 4.x vision | 可 | 一部プロファイル必須 | 高 | ✗バルクに過剰 |
+
+- **決め手**: 「画像が読める最安のHaiku」。確信度: 中〜高。
+- **可変性**: モデルID/リージョン/次元はTF変数。将来タグ品質を上げたければ ADR追補で上位モデルへ差し替え可。

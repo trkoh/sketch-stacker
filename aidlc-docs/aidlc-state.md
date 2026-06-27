@@ -31,5 +31,15 @@ Phase 1（issue #21 / #22）: 描いた絵に「振り返りメモ」を紐づ�
 - [x] Requirements Analysis（確定）
 - [x] ADR（ADR-001/002/003 裁定済み）
 - [x] Workflow Planning（実行計画作成）
-- [ ] **Construction 開始の承認**（← 現在ここ）
-- [ ] Construction: U1 → U2 → U3 → U4
+- [x] **Construction 開始の承認**
+- [x] U1 メタデータ基盤（#28 マージ済）
+- [~] U2 自動タグ＋埋め込み（← 現在ここ・PR作成中）
+- [ ] U3 検索＆タグ絞り込み
+- [ ] U4 メモ編集＋非公開API
+
+## U2 設計メモ（2026-06-27 オーナー承認: A案=非同期）
+- 生成タイミング: upload Lambda が S3保存+基本レコード作成の後に **enrich Lambda を Event invoke**（fire-and-forget）。S3 ObjectCreated は update-images が同条件で使用中=2本目トリガ不可のため、トリガ機構のみS3でなく直接async invoke（承認済み性質: 即返し/疎結合/障害隔離/バックフィル再利用は維持）。
+- API正本(スキル/AWS公式で確認): Nova埋め込み `SINGLE_EMBEDDING`・inline base64・レスポンス `embeddings[0].embedding`。Claude on Bedrock InvokeModel `anthropic_version:"bedrock-2023-05-31"`・Messages形式・レスポンス `content[].text`。**画像対応は Claude 3 Haiku**（3.5 Haikuは画像不可）。
+- モデルID/Bedrockリージョン/埋め込み次元はTF変数化（断定しない・apply時に調整可）。
+- 既存592枚は `scripts/backfill-enrich.mjs` をオーナーが一度だけ実行（一時費用≈$10.5）。
+- **ADR-004 裁定済**(2026-06-27): データ所在=要件なし → Bedrock=**us-east-1**(Nova唯一の提供地・東京にMM埋め込み無し)/タグ=**Claude 3 Haiku**(画像可の最安)/埋め込み=Nova。選定経緯とリージョン可用性を adrs.md に文書化。

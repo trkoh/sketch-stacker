@@ -1,7 +1,9 @@
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const { DynamoDBClient, PutItemCommand } = require('@aws-sdk/client-dynamodb');
+const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
 const s3Client = new S3Client({ region: process.env.AWS_DEFAULT_REGION });
 const ddb = new DynamoDBClient({ region: process.env.AWS_DEFAULT_REGION });
+const lambda = new LambdaClient({ region: process.env.AWS_DEFAULT_REGION });
 
 exports.handler = async (event) => {
   try {
@@ -63,6 +65,22 @@ exports.handler = async (event) => {
       }));
     } catch (e) {
       console.error('metadata PutItem failed (upload succeeded):', e);
+    }
+
+    // U2: タグ+埋め込み生成を enrich Lambda に非同期委譲(InvocationType=Event)。
+    // fire-and-forget。失敗してもアップロードは成功扱い(後でバックフィル可能)。
+    // S3 ObjectCreated は update-images が既に同条件で使用しオーバーラップ不可のため、
+    // ここから直接 async invoke する(承認済みA案の性質: 即返し/疎結合/障害隔離を維持)。
+    if (process.env.ENRICH_FUNCTION_NAME) {
+      try {
+        await lambda.send(new InvokeCommand({
+          FunctionName: process.env.ENRICH_FUNCTION_NAME,
+          InvocationType: 'Event',
+          Payload: Buffer.from(JSON.stringify({ imageId: key, now: Date.now() })),
+        }));
+      } catch (e) {
+        console.error('enrich invoke failed (upload succeeded):', e);
+      }
     }
 
     return {
