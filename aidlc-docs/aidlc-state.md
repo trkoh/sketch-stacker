@@ -42,3 +42,4 @@ Phase 1（issue #21 / #22）: 描いた絵に「振り返りメモ」を紐づ�
 - API正本(スキル/AWS公式で確認): Nova埋め込み `SINGLE_EMBEDDING`・inline base64・レスポンス `embeddings[0].embedding`。Claude on Bedrock InvokeModel `anthropic_version:"bedrock-2023-05-31"`・Messages形式・レスポンス `content[].text`。**画像対応は Claude 3 Haiku**（3.5 Haikuは画像不可）。
 - モデルID/Bedrockリージョン/埋め込み次元はTF変数化（断定しない・apply時に調整可）。
 - 既存592枚は `scripts/backfill-enrich.mjs` をオーナーが一度だけ実行（一時費用≈$10.5）。
+- **ADR-004 裁定済**(2026-06-27): データ所在=要件なし → Bedrock=**us-east-1**(Nova唯一の提供地・東京にMM埋め込み無し)/タグ=**Claude 3 Haiku**(画像可の最安)/埋め込み=Nova。選定経緯とリージョン可用性を adrs.md に文書化。
