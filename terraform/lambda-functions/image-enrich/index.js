@@ -58,14 +58,17 @@ async function embedImage(b64) {
 }
 
 /**
- * Claude Haiku(Bedrock)で画像から日本語モチーフタグを生成する。
+ * Claude Haiku(Bedrock)で画像から日本語タグを生成する。
+ * ※ wip-uploader にはユーザーの描いた全ジャンルの絵が入りうるため、
+ *   画風・題材・構図などをプロンプトで限定しない(中立)。検索しやすい語を自由に拾わせる。
  * @param {string} b64 base64エンコード済み画像
  * @returns {Promise<string[]>} 日本語タグ配列(最大 MAX_TAGS 件)
  */
 async function generateTags(b64) {
-  const prompt = `この絵(スケッチ/水彩等のplein air作品)を見て、モチーフ・被写体・構図を表す日本語タグを${MAX_TAGS}個以内で挙げてください。`
-    + '「山並み」「夕焼け」「街並み」のような短い名詞。固有名詞や推測の地名は避ける。'
-    + 'JSON配列だけを出力(例: ["山並み","川","木立"])。説明文は不要。';
+  const prompt = 'この画像はユーザーが描いた絵です。後で検索で見つけやすくするための日本語タグを付けてください。'
+    + `描かれているもの(被写体・モチーフ・場面)、画風や画材、色合い、雰囲気など、その絵を表す語を${MAX_TAGS}個以内で自由に。`
+    + 'ジャンルや画風は問わない。短い語で。'
+    + 'JSON配列だけを出力(例: ["猫","水彩","暖色"])。説明文は不要。';
   const body = {
     anthropic_version: 'bedrock-2023-05-31',
     max_tokens: 256,
