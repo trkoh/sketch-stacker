@@ -60,9 +60,12 @@ variable "admin_allowed_origin" {
 # U2: Bedrock(タグ生成/埋め込み)設定。モデル提供リージョンや画像対応モデルIDは
 # 環境により異なるため変数化(オーナーが apply 時に調整可能・断定しない)。
 variable "bedrock_region" {
-  description = "Region for Bedrock model invocation (may differ from the stack region by model availability)"
+  # 検証済み(2026-06): Nova multimodal embeddings は us-east-1 のみ提供(東京に無い)。
+  # Claude 3 Haiku(vision) も us-east-1 でオンデマンド可。両モデルが揃う us-east-1 を既定とする。
+  # Lambda 本体は東京、Bedrock呼び出しのみクロスリージョンで us-east-1(非同期なのでレイテンシ影響なし)。
+  description = "Region for Bedrock model invocation. Default us-east-1: Nova multimodal embeddings is only available there; Claude 3 Haiku (vision) is also on-demand there."
   type        = string
-  default     = "ap-northeast-1"
+  default     = "us-east-1"
 }
 
 variable "bedrock_embed_model_id" {
