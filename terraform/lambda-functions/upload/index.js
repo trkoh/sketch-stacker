@@ -1,5 +1,7 @@
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { DynamoDBClient, PutItemCommand } = require('@aws-sdk/client-dynamodb');
 const s3Client = new S3Client({ region: process.env.AWS_DEFAULT_REGION });
+const ddb = new DynamoDBClient({ region: process.env.AWS_DEFAULT_REGION });
 
 exports.handler = async (event) => {
   try {
@@ -47,6 +49,21 @@ exports.handler = async (event) => {
     });
 
     await s3Client.send(command);
+
+    // U1: メタデータ基盤に基本レコードを作成（memo/tags/embedding は後続Unitで付与）。
+    // 失敗してもアップロードは成功扱い（後でバックフィル可能・後方互換を優先）。
+    try {
+      await ddb.send(new PutItemCommand({
+        TableName: process.env.METADATA_TABLE,
+        Item: {
+          imageId: { S: key },
+          uploadedAt: { N: String(Date.now()) },
+          visibility: { S: 'private' },
+        },
+      }));
+    } catch (e) {
+      console.error('metadata PutItem failed (upload succeeded):', e);
+    }
 
     return {
       statusCode: 200,

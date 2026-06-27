@@ -121,6 +121,26 @@ resource "aws_s3_bucket_lifecycle_configuration" "image_bucket" {
 }
 
 # =====================================================================================
+# DYNAMODB（Phase 1: 画像メタデータ基盤 / ADR-001）
+# =====================================================================================
+resource "aws_dynamodb_table" "image_metadata" {
+  name         = "${var.stack_name}-ImageMetadata"
+  billing_mode = "PAY_PER_REQUEST" # オンデマンド（無料枠内・運用ゼロ）
+  hash_key     = "imageId"         # = 既存の <timestamp>.png
+
+  attribute {
+    name = "imageId"
+    type = "S"
+  }
+
+  lifecycle {
+    prevent_destroy = true # メタデータ消失防止
+  }
+
+  tags = var.stack_tags
+}
+
+# =====================================================================================
 # CLOUDFRONT RESOURCES
 # =====================================================================================
 resource "aws_cloudfront_origin_access_control" "image_bucket" {
@@ -240,6 +260,12 @@ resource "aws_iam_role" "upload_lambda_execution" {
             "s3:PutObject"
           ]
           Resource = "${aws_s3_bucket.image_bucket.arn}/*"
+        },
+        {
+          # U1: アップロード時にメタデータ基本レコードを作成
+          Effect   = "Allow"
+          Action   = ["dynamodb:PutItem"]
+          Resource = aws_dynamodb_table.image_metadata.arn
         }
       ]
     })
@@ -334,6 +360,12 @@ resource "aws_iam_role" "update_lambda_execution" {
             "cloudfront:CreateInvalidation"
           ]
           Resource = "arn:aws:cloudfront::${data.aws_caller_identity.current.account_id}:distribution/${aws_cloudfront_distribution.main.id}"
+        },
+        {
+          # U1: 公開メタデータ射影(metadata.json生成)のためテーブルをScan
+          Effect   = "Allow"
+          Action   = ["dynamodb:Scan"]
+          Resource = aws_dynamodb_table.image_metadata.arn
         }
       ]
     })
@@ -359,6 +391,7 @@ resource "aws_lambda_function" "upload" {
     variables = {
       BUCKET_NAME      = aws_s3_bucket.image_bucket.id
       CLOUDFRONT_DOMAIN = aws_cloudfront_distribution.main.domain_name
+      METADATA_TABLE    = aws_dynamodb_table.image_metadata.name
     }
   }
 
@@ -399,6 +432,8 @@ resource "aws_lambda_function" "update_images_json" {
       IMAGE_BUCKET               = var.image_bucket_name
       DISTRIBUTION_ID           = var.cloudfront_distribution_id
       IMAGES_JSON_FILENAME_PATH = var.images_json_filename_path
+      METADATA_TABLE            = aws_dynamodb_table.image_metadata.name
+      METADATA_JSON_PATH        = "viewer/metadata.json"
     }
   }
 
