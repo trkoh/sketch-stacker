@@ -57,6 +57,32 @@ variable "admin_allowed_origin" {
   default     = "https://odayakalife.dev"
 }
 
+# U2: Bedrock(タグ生成/埋め込み)設定。モデル提供リージョンや画像対応モデルIDは
+# 環境により異なるため変数化(オーナーが apply 時に調整可能・断定しない)。
+variable "bedrock_region" {
+  description = "Region for Bedrock model invocation (may differ from the stack region by model availability)"
+  type        = string
+  default     = "ap-northeast-1"
+}
+
+variable "bedrock_embed_model_id" {
+  description = "Bedrock model id for multimodal image embeddings (ADR-002: Nova)"
+  type        = string
+  default     = "amazon.nova-2-multimodal-embeddings-v1:0"
+}
+
+variable "bedrock_tag_model_id" {
+  description = "Bedrock model id for Japanese motif tag generation. MUST be vision-capable (Claude 3 Haiku supports images; 3.5 Haiku does not). Use an inference-profile id (e.g. apac.anthropic.claude-3-haiku-20240307-v1:0) if the region requires it."
+  type        = string
+  default     = "anthropic.claude-3-haiku-20240307-v1:0"
+}
+
+variable "embedding_dimension" {
+  description = "Nova embedding output dimension (256|384|1024|3072). Smaller keeps the public search JSON light."
+  type        = number
+  default     = 1024
+}
+
 # Common tags for all resources
 variable "stack_tags" {
   description = "Common tags for all resources"

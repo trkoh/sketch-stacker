@@ -266,6 +266,12 @@ resource "aws_iam_role" "upload_lambda_execution" {
           Effect   = "Allow"
           Action   = ["dynamodb:PutItem"]
           Resource = aws_dynamodb_table.image_metadata.arn
+        },
+        {
+          # U2: アップロード後に enrich Lambda を非同期invoke
+          Effect   = "Allow"
+          Action   = ["lambda:InvokeFunction"]
+          Resource = aws_lambda_function.image_enrich.arn
         }
       ]
     })
@@ -374,6 +380,59 @@ resource "aws_iam_role" "update_lambda_execution" {
   tags = var.stack_tags
 }
 
+# U2: enrich Lambda 専用の最小権限ロール。
+# 必要なのは 画像のS3読取 / メタデータのDynamoDB更新 / Bedrock呼び出し / 自身のログ のみ。
+resource "aws_iam_role" "enrich_lambda_execution" {
+  name = "${var.stack_name}-EnrichLambdaExecutionRole"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = { Service = "lambda.amazonaws.com" }
+        Action    = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  inline_policy {
+    name = "${var.stack_name}EnrichPolicy"
+    policy = jsonencode({
+      Version = "2012-10-17"
+      Statement = [
+        {
+          Effect   = "Allow"
+          Action   = ["s3:GetObject"]
+          Resource = "${aws_s3_bucket.image_bucket.arn}/*"
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["dynamodb:UpdateItem"]
+          Resource = aws_dynamodb_table.image_metadata.arn
+        },
+        {
+          # Bedrock呼び出し。モデルIDが変数(オンデマンド/推論プロファイル両対応)のため、
+          # foundation-model と inference-profile を許可。actionは InvokeModel のみに限定。
+          Effect = "Allow"
+          Action = ["bedrock:InvokeModel"]
+          Resource = [
+            "arn:aws:bedrock:*::foundation-model/*",
+            "arn:aws:bedrock:*:${data.aws_caller_identity.current.account_id}:inference-profile/*"
+          ]
+        },
+        {
+          Effect = "Allow"
+          Action = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+          Resource = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.stack_name}-ImageEnrichFunction:*"
+        }
+      ]
+    })
+  }
+
+  tags = var.stack_tags
+}
+
 # =====================================================================================
 # LAMBDA FUNCTIONS
 # =====================================================================================
@@ -392,6 +451,34 @@ resource "aws_lambda_function" "upload" {
       BUCKET_NAME      = aws_s3_bucket.image_bucket.id
       CLOUDFRONT_DOMAIN = aws_cloudfront_distribution.main.domain_name
       METADATA_TABLE    = aws_dynamodb_table.image_metadata.name
+      ENRICH_FUNCTION_NAME = aws_lambda_function.image_enrich.function_name
+    }
+  }
+
+  tags = var.stack_tags
+}
+
+# U2: タグ+埋め込み生成 Lambda。upload から非同期invoke、バックフィルからも再利用。
+# Bedrock呼び出しは数秒かかるため timeout を長めに、画像読み込み用に memory も確保。
+resource "aws_lambda_function" "image_enrich" {
+  function_name = "${var.stack_name}-ImageEnrichFunction"
+  handler       = "index.handler"
+  role          = aws_iam_role.enrich_lambda_execution.arn
+  runtime       = "nodejs22.x"
+  timeout       = 60
+  memory_size   = 512
+
+  filename         = data.archive_file.image_enrich_lambda.output_path
+  source_code_hash = data.archive_file.image_enrich_lambda.output_base64sha256
+
+  environment {
+    variables = {
+      IMAGE_BUCKET        = aws_s3_bucket.image_bucket.id
+      METADATA_TABLE      = aws_dynamodb_table.image_metadata.name
+      BEDROCK_REGION      = var.bedrock_region
+      EMBED_MODEL_ID      = var.bedrock_embed_model_id
+      TAG_MODEL_ID        = var.bedrock_tag_model_id
+      EMBEDDING_DIMENSION = tostring(var.embedding_dimension)
     }
   }
 
@@ -459,6 +546,12 @@ data "archive_file" "update_images_lambda" {
   type        = "zip"
   output_path = "lambda_update_images.zip"
   source_dir  = "lambda-functions/update-images"
+}
+
+data "archive_file" "image_enrich_lambda" {
+  type        = "zip"
+  output_path = "lambda_image_enrich.zip"
+  source_dir  = "lambda-functions/image-enrich"
 }
 
 # =====================================================================================
