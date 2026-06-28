@@ -650,6 +650,14 @@ resource "aws_api_gateway_deployment" "main" {
       aws_api_gateway_integration.search.id,
       aws_api_gateway_method.search_options.id,
       aws_api_gateway_integration.search_options.id,
+      aws_api_gateway_resource.memos.id,
+      aws_api_gateway_resource.memo_key.id,
+      aws_api_gateway_method.memo_get.id,
+      aws_api_gateway_integration.memo_get.id,
+      aws_api_gateway_method.memo_put.id,
+      aws_api_gateway_integration.memo_put.id,
+      aws_api_gateway_method.memo_options.id,
+      aws_api_gateway_integration.memo_options.id,
       var.admin_allowed_origin, # originを変えたらプリフライト応答を再デプロイさせる
     ]))
   }
@@ -1066,6 +1074,207 @@ resource "aws_lambda_permission" "api_gateway_invoke_search" {
   statement_id  = "AllowExecutionFromAPIGateway"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.query_embed.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*/*"
+}
+
+# =====================================================================================
+# U4 MEMO EDIT: memos Lambda + GET/PUT /memos/{key} (Basic認証) + CORS preflight
+# 振り返りメモの取得/更新。オーナー限定(既存 authorizer 再利用=ADR-003)。保存後に
+# update-images を非同期invoke して公開射影 metadata.json を更新する(公開メモのみ載る)。
+# =====================================================================================
+
+resource "terraform_data" "memos_deps" {
+  triggers_replace = [
+    filesha256("${path.module}/lambda-functions/memos/index.js"),
+    filesha256("${path.module}/lambda-functions/memos/package.json"),
+    filesha256("${path.module}/lambda-functions/memos/package-lock.json"),
+  ]
+  provisioner "local-exec" {
+    working_dir = "${path.module}/lambda-functions/memos"
+    command     = "npm ci --omit=dev --no-audit --no-fund || npm install --omit=dev --no-audit --no-fund"
+  }
+}
+
+data "archive_file" "memos_lambda" {
+  depends_on  = [terraform_data.memos_deps] # node_modules を含めるため install 後に zip
+  type        = "zip"
+  output_path = "lambda_memos.zip"
+  source_dir  = "lambda-functions/memos"
+}
+
+resource "aws_iam_role" "memos_lambda_execution" {
+  name = "${var.stack_name}-MemosLambdaExecutionRole"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = { Service = "lambda.amazonaws.com" }
+        Action    = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  inline_policy {
+    name = "${var.stack_name}MemosPolicy"
+    policy = jsonencode({
+      Version = "2012-10-17"
+      Statement = [
+        {
+          Effect   = "Allow"
+          Action   = ["dynamodb:GetItem", "dynamodb:UpdateItem"]
+          Resource = aws_dynamodb_table.image_metadata.arn
+        },
+        {
+          # 保存後の公開射影更新のため update-images を非同期invoke する。
+          Effect   = "Allow"
+          Action   = ["lambda:InvokeFunction"]
+          Resource = aws_lambda_function.update_images_json.arn
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+          Resource = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.stack_name}-MemosFunction:*"
+        }
+      ]
+    })
+  }
+
+  tags = var.stack_tags
+}
+
+resource "aws_lambda_function" "memos" {
+  function_name = "${var.stack_name}-MemosFunction"
+  handler       = "index.handler"
+  role          = aws_iam_role.memos_lambda_execution.arn
+  runtime       = "nodejs22.x"
+  timeout       = 10
+
+  filename         = data.archive_file.memos_lambda.output_path
+  source_code_hash = data.archive_file.memos_lambda.output_base64sha256
+
+  environment {
+    variables = {
+      METADATA_TABLE          = aws_dynamodb_table.image_metadata.name
+      ALLOWED_ORIGIN          = var.admin_allowed_origin
+      UPDATE_IMAGES_FUNCTION  = aws_lambda_function.update_images_json.function_name
+    }
+  }
+
+  tags = var.stack_tags
+}
+
+# /memos
+resource "aws_api_gateway_resource" "memos" {
+  parent_id   = aws_api_gateway_rest_api.main.root_resource_id
+  path_part   = "memos"
+  rest_api_id = aws_api_gateway_rest_api.main.id
+}
+
+# /memos/{key}
+resource "aws_api_gateway_resource" "memo_key" {
+  parent_id   = aws_api_gateway_resource.memos.id
+  path_part   = "{key}"
+  rest_api_id = aws_api_gateway_rest_api.main.id
+}
+
+# GET /memos/{key} （Basic認証=既存authorizer再利用。非公開メモも認証済みなら返す）
+resource "aws_api_gateway_method" "memo_get" {
+  http_method   = "GET"
+  resource_id   = aws_api_gateway_resource.memo_key.id
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  authorization = "CUSTOM"
+  authorizer_id = aws_api_gateway_authorizer.basic_auth.id
+
+  request_parameters = {
+    "method.request.path.key" = true
+  }
+}
+
+resource "aws_api_gateway_integration" "memo_get" {
+  http_method             = aws_api_gateway_method.memo_get.http_method
+  resource_id             = aws_api_gateway_resource.memo_key.id
+  rest_api_id             = aws_api_gateway_rest_api.main.id
+  type                    = "AWS_PROXY"
+  integration_http_method = "POST"
+  uri                     = "arn:aws:apigateway:${data.aws_region.current.name}:lambda:path/2015-03-31/functions/${aws_lambda_function.memos.arn}/invocations"
+}
+
+# PUT /memos/{key}
+resource "aws_api_gateway_method" "memo_put" {
+  http_method   = "PUT"
+  resource_id   = aws_api_gateway_resource.memo_key.id
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  authorization = "CUSTOM"
+  authorizer_id = aws_api_gateway_authorizer.basic_auth.id
+
+  request_parameters = {
+    "method.request.path.key" = true
+  }
+}
+
+resource "aws_api_gateway_integration" "memo_put" {
+  http_method             = aws_api_gateway_method.memo_put.http_method
+  resource_id             = aws_api_gateway_resource.memo_key.id
+  rest_api_id             = aws_api_gateway_rest_api.main.id
+  type                    = "AWS_PROXY"
+  integration_http_method = "POST"
+  uri                     = "arn:aws:apigateway:${data.aws_region.current.name}:lambda:path/2015-03-31/functions/${aws_lambda_function.memos.arn}/invocations"
+}
+
+# OPTIONS /memos/{key} （ブラウザのCORSプリフライト。認証不要のMOCK応答）
+resource "aws_api_gateway_method" "memo_options" {
+  http_method   = "OPTIONS"
+  resource_id   = aws_api_gateway_resource.memo_key.id
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "memo_options" {
+  http_method = aws_api_gateway_method.memo_options.http_method
+  resource_id = aws_api_gateway_resource.memo_key.id
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  type        = "MOCK"
+
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "memo_options" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.memo_key.id
+  http_method = aws_api_gateway_method.memo_options.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "memo_options" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.memo_key.id
+  http_method = aws_api_gateway_method.memo_options.http_method
+  status_code = aws_api_gateway_method_response.memo_options.status_code
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Authorization,Content-Type'"
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,PUT,OPTIONS'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'${var.admin_allowed_origin}'"
+  }
+
+  depends_on = [aws_api_gateway_integration.memo_options]
+}
+
+resource "aws_lambda_permission" "api_gateway_invoke_memos" {
+  statement_id  = "AllowExecutionFromAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.memos.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*/*"
 }

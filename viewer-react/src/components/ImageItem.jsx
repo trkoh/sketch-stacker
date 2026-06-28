@@ -1,4 +1,4 @@
-const ImageItem = ({ imageName, baseUrl, onImageClick, adminMode, onDelete }) => {
+const ImageItem = ({ imageName, baseUrl, onImageClick, adminMode, onDelete, onMemoEdit }) => {
   const extractTimestamp = (name) => {
     const m = name.match(/(\d{10,13})(?=\.[A-Za-z]+$)/);
     if (!m) return null;
@@ -41,6 +41,11 @@ const ImageItem = ({ imageName, baseUrl, onImageClick, adminMode, onDelete }) =>
     onDelete(imageName);
   };
 
+  const handleMemoClick = (e) => {
+    e.stopPropagation();
+    onMemoEdit(imageName);
+  };
+
   const getImageUrl = () => {
     return baseUrl + imageName;  // 常にCloudFrontの実際の画像を使用
   };
@@ -63,6 +68,16 @@ const ImageItem = ({ imageName, baseUrl, onImageClick, adminMode, onDelete }) =>
           style={{ position: 'absolute', top: 4, left: 4, background: '#c0392b', color: '#fff', zIndex: 2, opacity: 1, visibility: 'visible' }}
         >
           削除
+        </button>
+      )}
+
+      {adminMode && (
+        <button
+          className="ctrl-btn memo-btn"
+          onClick={handleMemoClick}
+          style={{ position: 'absolute', top: 4, left: 54, background: '#2c3e50', color: '#fff', zIndex: 2, opacity: 1, visibility: 'visible' }}
+        >
+          メモ
         </button>
       )}
 
