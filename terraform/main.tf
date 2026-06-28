@@ -521,6 +521,7 @@ resource "aws_lambda_function" "update_images_json" {
       IMAGES_JSON_FILENAME_PATH = var.images_json_filename_path
       METADATA_TABLE            = aws_dynamodb_table.image_metadata.name
       METADATA_JSON_PATH        = "viewer/metadata.json"
+      EMBEDDINGS_JSON_PATH      = "viewer/embeddings.json" # U3b: 意味検索用の画像ベクトル射影
     }
   }
 
@@ -644,6 +645,11 @@ resource "aws_api_gateway_deployment" "main" {
       aws_api_gateway_integration.image_delete.id,
       aws_api_gateway_method.image_options.id,
       aws_api_gateway_integration.image_options.id,
+      aws_api_gateway_resource.search.id,
+      aws_api_gateway_method.search_post.id,
+      aws_api_gateway_integration.search.id,
+      aws_api_gateway_method.search_options.id,
+      aws_api_gateway_integration.search_options.id,
       var.admin_allowed_origin, # originを変えたらプリフライト応答を再デプロイさせる
     ]))
   }
@@ -890,6 +896,176 @@ resource "aws_lambda_permission" "api_gateway_invoke_delete" {
   statement_id  = "AllowExecutionFromAPIGateway"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.delete.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*/*"
+}
+
+# =====================================================================================
+# U3b SEMANTIC SEARCH: query-embed Lambda + POST /search (Basic認証) + CORS preflight
+# 検索文字列を Nova テキスト埋め込みでベクトル化して返すだけの薄い Lambda。
+# ベクトル比較(コサイン)はブラウザ内(ADR-002)。エンドポイントはオーナー限定(ADR-005=A)。
+# =====================================================================================
+
+# Bedrock SDK を確定的に同梱(image-enrich と同じ理由。Node22 の SDK 同梱は AWS 未保証)。
+resource "terraform_data" "query_embed_deps" {
+  triggers_replace = [
+    filesha256("${path.module}/lambda-functions/query-embed/index.js"),
+    filesha256("${path.module}/lambda-functions/query-embed/package.json"),
+    filesha256("${path.module}/lambda-functions/query-embed/package-lock.json"),
+  ]
+  provisioner "local-exec" {
+    working_dir = "${path.module}/lambda-functions/query-embed"
+    command     = "npm ci --omit=dev --no-audit --no-fund || npm install --omit=dev --no-audit --no-fund"
+  }
+}
+
+data "archive_file" "query_embed_lambda" {
+  depends_on  = [terraform_data.query_embed_deps] # node_modules を含めるため install 後に zip
+  type        = "zip"
+  output_path = "lambda_query_embed.zip"
+  source_dir  = "lambda-functions/query-embed"
+}
+
+resource "aws_iam_role" "query_embed_lambda_execution" {
+  name = "${var.stack_name}-QueryEmbedLambdaExecutionRole"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = { Service = "lambda.amazonaws.com" }
+        Action    = "sts:AssumeRole"
+      }
+    ]
+  })
+
+  inline_policy {
+    name = "${var.stack_name}QueryEmbedPolicy"
+    policy = jsonencode({
+      Version = "2012-10-17"
+      Statement = [
+        {
+          # Bedrock 呼び出し。モデルIDが変数(オンデマンド/推論プロファイル両対応)のため
+          # foundation-model と inference-profile を許可。action は InvokeModel のみ。
+          Effect = "Allow"
+          Action = ["bedrock:InvokeModel"]
+          Resource = [
+            "arn:aws:bedrock:*::foundation-model/*",
+            "arn:aws:bedrock:*:${data.aws_caller_identity.current.account_id}:inference-profile/*"
+          ]
+        },
+        {
+          Effect   = "Allow"
+          Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+          Resource = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.stack_name}-QueryEmbedFunction:*"
+        }
+      ]
+    })
+  }
+
+  tags = var.stack_tags
+}
+
+resource "aws_lambda_function" "query_embed" {
+  function_name = "${var.stack_name}-QueryEmbedFunction"
+  handler       = "index.handler"
+  role          = aws_iam_role.query_embed_lambda_execution.arn
+  runtime       = "nodejs22.x"
+  timeout       = 15
+
+  filename         = data.archive_file.query_embed_lambda.output_path
+  source_code_hash = data.archive_file.query_embed_lambda.output_base64sha256
+
+  environment {
+    variables = {
+      BEDROCK_REGION      = var.bedrock_region
+      EMBED_MODEL_ID      = var.bedrock_embed_model_id
+      EMBEDDING_DIMENSION = tostring(var.embedding_dimension)
+      ALLOWED_ORIGIN      = var.admin_allowed_origin
+    }
+  }
+
+  tags = var.stack_tags
+}
+
+# /search
+resource "aws_api_gateway_resource" "search" {
+  parent_id   = aws_api_gateway_rest_api.main.root_resource_id
+  path_part   = "search"
+  rest_api_id = aws_api_gateway_rest_api.main.id
+}
+
+# POST /search （Basic認証=既存authorizer再利用。ADR-005=A オーナー限定。
+# 公開に切替える場合は authorization を "NONE" にし authorizer_id 行を外す＋レート制限を別途検討）
+resource "aws_api_gateway_method" "search_post" {
+  http_method   = "POST"
+  resource_id   = aws_api_gateway_resource.search.id
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  authorization = "CUSTOM"
+  authorizer_id = aws_api_gateway_authorizer.basic_auth.id
+}
+
+resource "aws_api_gateway_integration" "search" {
+  http_method             = aws_api_gateway_method.search_post.http_method
+  resource_id             = aws_api_gateway_resource.search.id
+  rest_api_id             = aws_api_gateway_rest_api.main.id
+  type                    = "AWS_PROXY"
+  integration_http_method = "POST"
+  uri                     = "arn:aws:apigateway:${data.aws_region.current.name}:lambda:path/2015-03-31/functions/${aws_lambda_function.query_embed.arn}/invocations"
+}
+
+# OPTIONS /search （ブラウザのCORSプリフライト。認証不要のMOCK応答）
+resource "aws_api_gateway_method" "search_options" {
+  http_method   = "OPTIONS"
+  resource_id   = aws_api_gateway_resource.search.id
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "search_options" {
+  http_method = aws_api_gateway_method.search_options.http_method
+  resource_id = aws_api_gateway_resource.search.id
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  type        = "MOCK"
+
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "search_options" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.search.id
+  http_method = aws_api_gateway_method.search_options.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "search_options" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.search.id
+  http_method = aws_api_gateway_method.search_options.http_method
+  status_code = aws_api_gateway_method_response.search_options.status_code
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Authorization,Content-Type'"
+    "method.response.header.Access-Control-Allow-Methods" = "'POST,OPTIONS'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'${var.admin_allowed_origin}'"
+  }
+
+  depends_on = [aws_api_gateway_integration.search_options]
+}
+
+resource "aws_lambda_permission" "api_gateway_invoke_search" {
+  statement_id  = "AllowExecutionFromAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.query_embed.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/*/*/*"
 }
