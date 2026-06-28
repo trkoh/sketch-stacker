@@ -71,14 +71,36 @@ exports.handler = async (event) => {
     }));
     console.log("/" + metaPath);
 
+    // U3b: 意味検索用の画像ベクトルを別ファイルに射影する。
+    // metadata.json と分けるのは、embedding(1024次元×全画像)が重く、ギャラリー表示には不要で
+    // 検索時のみ遅延ロードしたいため(ADR-002/ADR-005)。embedding 未生成の画像はスキップ。
+    const embeddingsPath = process.env.EMBEDDINGS_JSON_PATH || 'viewer/embeddings.json';
+    const embeddings = [];
+    for (const it of metaItems) {
+      const raw = it.embedding && it.embedding.S;
+      if (!raw) continue; // enrich 未済(バックフィル前)はベクトルが無いので対象外
+      try {
+        embeddings.push({ imageId: it.imageId && it.imageId.S, embedding: JSON.parse(raw) });
+      } catch (e) {
+        console.warn(`embedding parse skipped for ${it.imageId && it.imageId.S}`, e);
+      }
+    }
+    await s3Client.send(new PutObjectCommand({
+      Bucket: imageBucket,
+      Key: embeddingsPath,
+      Body: JSON.stringify(embeddings),
+      ContentType: 'application/json',
+    }));
+    console.log("/" + embeddingsPath);
+
     const client = new CloudFront();
     await client.createInvalidation({
       DistributionId: process.env.DISTRIBUTION_ID,
       InvalidationBatch: {
         CallerReference: new Date().toISOString(),
         Paths: {
-          Quantity: 2,
-          Items: ["/" + fileName, "/" + metaPath]
+          Quantity: 3,
+          Items: ["/" + fileName, "/" + metaPath, "/" + embeddingsPath]
         }
       }
     });
