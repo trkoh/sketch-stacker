@@ -19,6 +19,9 @@ exports.handler = async (event) => {
         ContinuationToken: continuationToken,
       }));
       for (const object of listObjectsResponse.Contents || []) {
+        // viewer/ 配下は運用ファイル(images.json / metadata.json / embeddings.json / index.html 等)で
+        // 作品画像ではない。images.json には載せない(フロントでもう一段はじくが、源泉から綺麗にしておく)。
+        if (object.Key.startsWith('viewer/')) continue;
         fileNames.push(object.Key);
       }
       continuationToken = listObjectsResponse.IsTruncated
