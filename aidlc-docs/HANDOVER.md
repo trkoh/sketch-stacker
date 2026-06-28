@@ -52,8 +52,12 @@
 - **terraform state はローカル**（S3 backend 未設定）。消失・ロック無しに注意。
 
 ## 6. 残作業（優先順）
-1. **PR #32（U3aタグ絞り込み）レビュー→マージ**。main マージで Pages 自動デプロイ。※ `metadata.json` にタグが載るのは **enrich済み画像のみ**＝バックフィル前はタグが少ない。
-2. **バックフィル（既存592枚）**：`aws sso login --profile dev` → `AWS_PROFILE=dev REGION=ap-northeast-1 node scripts/backfill-enrich.mjs --limit 5`（試走）→ 全量。**一時費用 ≈ $10.5**（埋め込み≈$0.5＋タグ≈$10）。
+1. ~~**PR #32（U3aタグ絞り込み）レビュー→マージ**~~ → **完了**（2026-06-28 マージ済 `41c778f`・Pages デプロイ成功）。※ `metadata.json` にタグが載るのは **enrich済み画像のみ**＝バックフィル前はタグが少ない。
+2. **バックフィル（既存 518枚・未処理 516枚）**：`cd scripts && npm install`（初回のみ）→ `aws sso login --profile dev` → `AWS_PROFILE=dev REGION=ap-northeast-1 node scripts/backfill-enrich.mjs --limit 5`（試走）→ 全量。**一時費用 ≈ $10.5**（埋め込み≈$0.5＋タグ≈$10）。
+   - ⚠ **バックフィルは DDB を更新するだけ**。完了後に **update-images を1回手動invoke**して公開射影 `viewer/metadata.json` を再生成すること（下記）。これをしないとフロントにタグが出ない。
+     `aws lambda invoke --function-name WIPUploaderUpdateImagesJsonFunction --payload '{}' --cli-binary-format raw-in-base64-out --profile dev --region ap-northeast-1 /tmp/upd.json`
+   - ✅ **通し検証済（2026-06-28）**：1枚 enrich→DDB(autoTags10/embedding1024)→update-images→metadata.json(518件中タグ付き3件、対象画像にタグ反映) を実機確認。スクリプトは依存マニフェスト欠如で初回失敗→`scripts/package.json` 追加で修正済。
+   - 実数注記: ハンドオフ初版の「592枚」は概数。DDB 実数は **518件**（処理済2件＝U2検証分）。
 3. **U3b 意味検索**：(a) update-images に embedding 射影（**別ファイル `viewer/embeddings.json` 推奨**＝ギャラリー軽量化・検索時に遅延ロード）(b) **クエリ埋め込みLambda＋APIルート**（Nova text 埋め込み・`embeddingPurpose=IMAGE_RETRIEVAL`・dim1024）(c) フロント検索ボックス＋ブラウザ内コサイン。
    - 設計判断（検索エンドポイントを**公開**にするか**オーナー限定(既存authorizer)**にするか＝コスト/悪用リスク）は **ADR-005 で裁定推奨**（憲法「断定しない」）。
 4. **U4 メモ編集＋非公開API**：`GET/PUT /memos`（Basic認証・既存authorizer再利用＝ADR-003）。管理UI（`?admin`）にメモ編集＋公開トグル。

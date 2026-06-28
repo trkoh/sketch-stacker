@@ -2,9 +2,9 @@
 
 - Workflow: AI-DLC v1.0.0
 - Workspace: **Brownfield**（既存: React/Vite + Terraform + Lambda）
-- Phase: 🔵 INCEPTION（完了間近）→ 次 🟢 CONSTRUCTION
-- Stage: **Workflow Planning 完了 → Construction 開始の承認ゲート**
-- Updated: 2026-06-27
+- Phase: 🟢 CONSTRUCTION（U1/U2/U3a 完了・本番反映済）
+- Stage: **U3a マージ済（#32）→ 次は バックフィル（オーナー）/ U3b意味検索 or U4メモ**
+- Updated: 2026-06-28
 
 ## Intent
 Phase 1（issue #21 / #22）: 描いた絵に「振り返りメモ」を紐づけ、**手動タグ無しでモチーフを意味検索**できるギャラリーへ拡張する。
@@ -33,9 +33,11 @@ Phase 1（issue #21 / #22）: 描いた絵に「振り返りメモ」を紐づ�
 - [x] Workflow Planning（実行計画作成）
 - [x] **Construction 開始の承認**
 - [x] U1 メタデータ基盤（#28 マージ済）
-- [~] U2 自動タグ＋埋め込み（← 現在ここ・PR作成中）
-- [ ] U3 検索＆タグ絞り込み
-- [ ] U4 メモ編集＋非公開API
+- [x] U2 自動タグ＋埋め込み（#29/#30/#31 マージ済・実機検証済）
+- [x] U3a タグ絞り込み（#32 マージ済・Pages デプロイ成功 2026-06-28）
+- [ ] U3b 意味検索（未着手・要 ADR-005=検索エンドポイント公開/オーナー限定）
+- [ ] U4 メモ編集＋非公開API（未着手・ADR-003 で authorizer 再利用裁定済）
+- [ ] バックフィル（既存592枚 enrich・費用≈$10.5・オーナー実行）← U3a/U3b を実用にする前提
 
 ## U2 設計メモ（2026-06-27 オーナー承認: A案=非同期）
 - 生成タイミング: upload Lambda が S3保存+基本レコード作成の後に **enrich Lambda を Event invoke**（fire-and-forget）。S3 ObjectCreated は update-images が同条件で使用中=2本目トリガ不可のため、トリガ機構のみS3でなく直接async invoke（承認済み性質: 即返し/疎結合/障害隔離/バックフィル再利用は維持）。
