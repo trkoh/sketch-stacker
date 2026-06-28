@@ -6,12 +6,14 @@ import Masonry from 'react-masonry-css';
 
 const ImageGallery = () => {
   const [images, setImages] = useState([]);
-  const [displayedImages, setDisplayedImages] = useState([]);
-  const [showAll, setShowAll] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(20);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalImageUrl, setModalImageUrl] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  // U3a タグ絞り込み: metadata.json(U1射影) の autoTags を imageId->tags で保持。
+  const [tagsById, setTagsById] = useState({});
+  const [selectedTags, setSelectedTags] = useState([]); // AND 絞り込み（選択タグを全て含む画像のみ）
   // 管理モード: 認証情報はメモリ上のみ保持（localStorageには残さない＝再読込で消える）
   const [admin, setAdmin] = useState(null);
   const [adminForm, setAdminForm] = useState({ open: false, username: '', password: '' });
@@ -21,6 +23,7 @@ const ImageGallery = () => {
   // 設定
   const BASE_URL = "https://d3a21s3joww9j4.cloudfront.net/";
   const JSON_URL = "https://d3a21s3joww9j4.cloudfront.net/viewer/images.json";
+  const META_URL = "https://d3a21s3joww9j4.cloudfront.net/viewer/metadata.json";
   const API_BASE = "https://3p4utkstnb.execute-api.ap-northeast-1.amazonaws.com/prod";
   const EXCLUDE = ["viewer/", "viewer/index.html", "viewer/images.json"];
   const INITIAL_COUNT = 20;
@@ -29,17 +32,20 @@ const ImageGallery = () => {
     fetchImages();
   }, []);
 
+  // タグ選択が変わったら表示件数をリセット（先頭から見せ直す）
+  useEffect(() => {
+    setVisibleCount(INITIAL_COUNT);
+  }, [selectedTags]);
+
   const fetchImages = async () => {
     try {
       setLoading(true);
-      const response = await fetch(JSON_URL, {
-        method: 'GET',
-        mode: 'cors',
-        credentials: 'omit',
-        headers: {
-          'Accept': 'application/json',
-        }
-      });
+      // 画像一覧(images.json)とメタデータ(metadata.json=autoTags)を並行取得。
+      // metadata.json はU1射影。未生成/失敗でもギャラリーは画像一覧だけで成立させる。
+      const [response, metaRes] = await Promise.all([
+        fetch(JSON_URL, { method: 'GET', mode: 'cors', credentials: 'omit', headers: { 'Accept': 'application/json' } }),
+        fetch(META_URL, { method: 'GET', mode: 'cors', credentials: 'omit', headers: { 'Accept': 'application/json' } }).catch(() => null),
+      ]);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -50,8 +56,24 @@ const ImageGallery = () => {
         .filter(name => !EXCLUDE.includes(name))
         .sort((a, b) => b.localeCompare(a)); // 降順（新しい順）
 
+      // metadata.json から imageId -> autoTags を構築（取得できた場合のみ）
+      if (metaRes && metaRes.ok) {
+        try {
+          const meta = await metaRes.json();
+          const map = {};
+          for (const m of Array.isArray(meta) ? meta : []) {
+            if (m && m.imageId && Array.isArray(m.autoTags) && m.autoTags.length) {
+              map[m.imageId] = m.autoTags;
+            }
+          }
+          setTagsById(map);
+        } catch (e) {
+          console.warn('metadata.json の解析に失敗（タグ絞り込みなしで継続）', e);
+        }
+      }
+
       setImages(filteredFiles);
-      setDisplayedImages(filteredFiles.slice(0, INITIAL_COUNT));
+      setVisibleCount(INITIAL_COUNT);
     } catch (err) {
       console.error("画像リスト取得失敗", err);
       setError(err.message);
@@ -60,14 +82,12 @@ const ImageGallery = () => {
     }
   };
 
-  const handleLoadMore = () => {
-    const currentCount = displayedImages.length;
-    const nextBatch = images.slice(currentCount, currentCount + INITIAL_COUNT);
-    setDisplayedImages([...displayedImages, ...nextBatch]);
+  const toggleTag = (tag) => {
+    setSelectedTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
+  };
 
-    if (currentCount + INITIAL_COUNT >= images.length) {
-      setShowAll(true);
-    }
+  const handleLoadMore = () => {
+    setVisibleCount(c => c + INITIAL_COUNT);
   };
 
   const handleImageClick = (imageUrl) => {
@@ -110,7 +130,6 @@ const ImageGallery = () => {
       }
       // 成功したらUIから即座に除去
       setImages(prev => prev.filter(n => n !== imageName));
-      setDisplayedImages(prev => prev.filter(n => n !== imageName));
     } catch (err) {
       console.error("削除失敗", err);
       alert(`削除に失敗しました: ${err.message}`);
@@ -125,7 +144,26 @@ const ImageGallery = () => {
     return <div>Error: {error}</div>;
   }
 
-  const hasMoreImages = !showAll && images.length > INITIAL_COUNT;
+  // 選択タグ(AND)で絞り込み。選択が無ければ全件。
+  const filteredImages = selectedTags.length === 0
+    ? images
+    : images.filter(name => {
+        const tags = tagsById[name];
+        return tags && selectedTags.every(t => tags.includes(t));
+      });
+  const displayedImages = filteredImages.slice(0, visibleCount);
+  const hasMoreImages = displayedImages.length < filteredImages.length;
+
+  // タグチップ用: 出現頻度の高い順に上位を提示（多すぎる時の足切り）。選択中タグは常に含める。
+  const TAG_CHIP_LIMIT = 40;
+  const tagCounts = {};
+  for (const name of images) {
+    for (const t of tagsById[name] || []) tagCounts[t] = (tagCounts[t] || 0) + 1;
+  }
+  const topTags = Object.keys(tagCounts)
+    .sort((a, b) => tagCounts[b] - tagCounts[a] || a.localeCompare(b))
+    .slice(0, TAG_CHIP_LIMIT);
+  const chipTags = Array.from(new Set([...selectedTags, ...topTags]));
 
   const breakpointColumns = {
     default: 6,
@@ -190,6 +228,37 @@ const ImageGallery = () => {
       {/* Contribution Calendar */}
       <ContributionCalendar images={images} />
 
+      {/* U3a タグ絞り込み: 自動タグ(autoTags)のチップ。クリックでAND絞り込み。タグが無ければ非表示。 */}
+      {chipTags.length > 0 && (
+        <div className="tag-filter" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '10px 0', alignItems: 'center' }}>
+          {selectedTags.length > 0 && (
+            <button
+              onClick={() => setSelectedTags([])}
+              style={{ padding: '4px 10px', borderRadius: 14, border: '1px solid #ccc', background: '#fff', cursor: 'pointer', fontSize: '0.8rem' }}
+            >
+              クリア（{filteredImages.length}件）
+            </button>
+          )}
+          {chipTags.map(tag => {
+            const on = selectedTags.includes(tag);
+            return (
+              <button
+                key={tag}
+                onClick={() => toggleTag(tag)}
+                style={{
+                  padding: '4px 10px', borderRadius: 14, cursor: 'pointer', fontSize: '0.8rem',
+                  border: on ? '1px solid #2d7' : '1px solid #ddd',
+                  background: on ? '#2d7' : '#f5f5f5',
+                  color: on ? '#fff' : '#333',
+                }}
+              >
+                {tag}{tagCounts[tag] ? ` (${tagCounts[tag]})` : ''}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       <Masonry
         breakpointCols={breakpointColumns}
         className="gallery"
@@ -212,7 +281,7 @@ const ImageGallery = () => {
           className="load-more"
           onClick={handleLoadMore}
         >
-          Load More ({Math.min(INITIAL_COUNT, images.length - displayedImages.length)} more)
+          Load More ({Math.min(INITIAL_COUNT, filteredImages.length - displayedImages.length)} more)
         </button>
       )}
 
