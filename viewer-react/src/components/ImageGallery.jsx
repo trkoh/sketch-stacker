@@ -26,6 +26,8 @@ const ImageGallery = () => {
   const [searchError, setSearchError] = useState(null);
   // 画像側ベクトル(embeddings.json)は重いので検索時に一度だけ遅延ロードしてメモリにキャッシュ。
   const [embeddingsCache, setEmbeddingsCache] = useState(null);
+  // U4 メモ編集（オーナー限定）: 編集対象1枚のメモ本文と公開フラグを保持する小エディタの状態。
+  const [memoEditor, setMemoEditor] = useState(null); // null=閉/{imageId,memo,visibility,loading,saving,error}
 
   // 設定
   const BASE_URL = "https://d3a21s3joww9j4.cloudfront.net/";
@@ -215,6 +217,52 @@ const ImageGallery = () => {
     setSearchError(null);
   };
 
+  // U4: メモ編集を開く。GET /memos/{key}（Basic認証）で現在のメモ＋公開フラグを読み込む。
+  const openMemoEditor = async (imageName) => {
+    if (!admin) return;
+    setMemoEditor({ imageId: imageName, memo: '', visibility: 'private', loading: true, saving: false, error: null });
+    try {
+      const res = await fetch(`${API_BASE}/memos/${encodeURIComponent(imageName)}`, {
+        headers: { 'Authorization': 'Basic ' + btoa(`${admin.username}:${admin.password}`) },
+      });
+      if (res.status === 401 || res.status === 403) {
+        setMemoEditor(m => m && { ...m, loading: false, error: '認証に失敗しました。' });
+        return;
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setMemoEditor(m => m && { ...m, memo: data.memo || '', visibility: data.visibility || 'private', loading: false });
+    } catch (err) {
+      console.error('メモ取得失敗', err);
+      setMemoEditor(m => m && { ...m, loading: false, error: `読み込み失敗: ${err.message}` });
+    }
+  };
+
+  // U4: メモ保存。PUT /memos/{key} で memo と visibility を更新。成功で閉じる。
+  const saveMemo = async () => {
+    if (!admin || !memoEditor) return;
+    setMemoEditor(m => ({ ...m, saving: true, error: null }));
+    try {
+      const res = await fetch(`${API_BASE}/memos/${encodeURIComponent(memoEditor.imageId)}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': 'Basic ' + btoa(`${admin.username}:${admin.password}`),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ memo: memoEditor.memo, visibility: memoEditor.visibility }),
+      });
+      if (res.status === 401 || res.status === 403) {
+        setMemoEditor(m => m && { ...m, saving: false, error: '認証に失敗しました。' });
+        return;
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setMemoEditor(null); // 成功 → 閉じる
+    } catch (err) {
+      console.error('メモ保存失敗', err);
+      setMemoEditor(m => m && { ...m, saving: false, error: `保存失敗: ${err.message}` });
+    }
+  };
+
   if (loading) {
     return <div>Loading...</div>;
   }
@@ -376,6 +424,7 @@ const ImageGallery = () => {
             onImageClick={handleImageClick}
             adminMode={!!admin}
             onDelete={handleDelete}
+            onMemoEdit={openMemoEditor}
           />
         ))}
       </Masonry>
@@ -394,6 +443,50 @@ const ImageGallery = () => {
         imageUrl={modalImageUrl}
         onClose={handleModalClose}
       />
+
+      {/* U4 メモ編集（オーナー限定）: 中央のモーダルでメモ本文＋公開/非公開トグルを編集 */}
+      {memoEditor && (
+        <div
+          onClick={() => !memoEditor.saving && setMemoEditor(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 8, padding: 20, width: 'min(520px, 92vw)', boxShadow: '0 8px 30px rgba(0,0,0,0.3)' }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <strong>メモ編集</strong>
+              <span style={{ fontSize: '0.75rem', color: '#888' }}>{memoEditor.imageId}</span>
+            </div>
+            <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+              <img src={BASE_URL + memoEditor.imageId} alt="" style={{ width: 96, height: 96, objectFit: 'contain', background: '#f5f5f5', borderRadius: 4 }} />
+              <textarea
+                placeholder={memoEditor.loading ? '読み込み中…' : '振り返りメモ（自由記述）'}
+                value={memoEditor.memo}
+                disabled={memoEditor.loading || memoEditor.saving}
+                onChange={e => setMemoEditor(m => ({ ...m, memo: e.target.value }))}
+                style={{ flex: 1, minHeight: 110, padding: 8, border: '1px solid #ccc', borderRadius: 4, resize: 'vertical', fontFamily: 'inherit' }}
+              />
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12, fontSize: '0.9rem' }}>
+              <input
+                type="checkbox"
+                checked={memoEditor.visibility === 'public'}
+                disabled={memoEditor.loading || memoEditor.saving}
+                onChange={e => setMemoEditor(m => ({ ...m, visibility: e.target.checked ? 'public' : 'private' }))}
+              />
+              このメモを公開する（オフ＝非公開・自分だけ。デフォルト非公開）
+            </label>
+            {memoEditor.error && <div style={{ color: '#c0392b', fontSize: '0.85rem', marginBottom: 8 }}>{memoEditor.error}</div>}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button style={adminBtnStyle} onClick={() => setMemoEditor(null)} disabled={memoEditor.saving}>キャンセル</button>
+              <button style={adminBtnStyle} onClick={saveMemo} disabled={memoEditor.loading || memoEditor.saving}>
+                {memoEditor.saving ? '保存中…' : '保存'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

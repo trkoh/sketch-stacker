@@ -36,8 +36,8 @@ Phase 1（issue #21 / #22）: 描いた絵に「振り返りメモ」を紐づ�
 - [x] U2 自動タグ＋埋め込み（#29/#30/#31 マージ済・実機検証済）
 - [x] U3a タグ絞り込み（#32 マージ済・Pages デプロイ成功 2026-06-28）
 - [x] U3b 意味検索（#34 マージ・apply・実機検証済 2026-06-28）
-- [ ] U4 メモ編集＋非公開API（未着手・ADR-003 で authorizer 再利用裁定済）
-- [~] バックフィル（2026-06-28 実行）: 469枚 embedding / 464枚 tagged を本番反映（metadata.json 518件中タグ付き464、embeddings.json 469件）。**残49枚は enrich の重複タグバグで失敗**＝fix/enrich-dedup-tags で修正、apply 後に再実行で回収。
+- [~] U4 メモ編集＋非公開API（PR #36・ADR-003 で authorizer 再利用）。memos Lambda＋GET/PUT /memos/{key}（Basic認証）＋管理モードのメモ編集UI（公開/非公開トグル・デフォルト非公開）。保存後 update-images を非同期invokeして公開射影更新。terraform plan / lint / build 通過。apply はオーナー
+- [~] バックフィル（2026-06-28 実行）: 469枚 embedding / 464枚 tagged を本番反映（metadata.json 518件中タグ付き464、embeddings.json 469件）。**残49枚は enrich の重複タグバグで失敗**＝#35 で修正（マージ済）、apply 後に再実行で回収。
 
 ## U2 設計メモ（2026-06-27 オーナー承認: A案=非同期）
 - 生成タイミング: upload Lambda が S3保存+基本レコード作成の後に **enrich Lambda を Event invoke**（fire-and-forget）。S3 ObjectCreated は update-images が同条件で使用中=2本目トリガ不可のため、トリガ機構のみS3でなく直接async invoke（承認済み性質: 即返し/疎結合/障害隔離/バックフィル再利用は維持）。
