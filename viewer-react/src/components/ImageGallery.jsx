@@ -33,7 +33,9 @@ const ImageGallery = () => {
   const META_URL = "https://d3a21s3joww9j4.cloudfront.net/viewer/metadata.json";
   const EMBED_URL = "https://d3a21s3joww9j4.cloudfront.net/viewer/embeddings.json";
   const API_BASE = "https://3p4utkstnb.execute-api.ap-northeast-1.amazonaws.com/prod";
-  const EXCLUDE = ["viewer/", "viewer/index.html", "viewer/images.json"];
+  // viewer/ 配下は運用ファイル(images.json / metadata.json / embeddings.json / index.html 等)であって
+  // 作品画像ではない。接頭辞で一括除外する（完全一致だと新しい viewer/ 成果物が漏れてタイル表示されてしまう）。
+  const EXCLUDE_PREFIX = "viewer/";
   const INITIAL_COUNT = 20;
   const SEARCH_RESULT_LIMIT = 60; // 意味検索の上位表示件数
 
@@ -62,7 +64,7 @@ const ImageGallery = () => {
 
       // フィルタリングとソート
       const filteredFiles = files
-        .filter(name => !EXCLUDE.includes(name))
+        .filter(name => typeof name === 'string' && !name.startsWith(EXCLUDE_PREFIX))
         .sort((a, b) => b.localeCompare(a)); // 降順（新しい順）
 
       // metadata.json から imageId -> autoTags を構築（取得できた場合のみ）
