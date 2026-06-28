@@ -1,13 +1,23 @@
 #!/usr/bin/env node
-// U2 バックフィル: 既存画像(約592枚)のタグ+埋め込みを一度だけ生成する。
+// U2 バックフィル: 既存画像(実数 518枚・未処理 516枚)のタグ+埋め込みを一度だけ生成する。
 // enrich Lambda を画像ごとに呼び出すだけなので、生成ロジックは本番と完全に同一。
 // terraform apply と同じくオーナーがローカルで実行する(初回限りの一時費用: 埋め込み≈$0.5 / タグ≈$10)。
 //
-// 使い方:
+// 事前準備(初回のみ): このスクリプトは AWS SDK に依存する。scripts/ で依存を入れること。
+//   cd scripts && npm install   (scripts/package.json。node_modules は scripts/ 配下に置かれ .gitignore 済み)
+//
+// 使い方(リポジトリ root から実行):
 //   aws sso login --profile dev
+//   AWS_PROFILE=dev node scripts/backfill-enrich.mjs --limit 5  # まず小さく試走(推奨)
 //   AWS_PROFILE=dev node scripts/backfill-enrich.mjs            # 未処理(embedding無し)だけ
 //   AWS_PROFILE=dev node scripts/backfill-enrich.mjs --all      # 全画像を再処理
-//   AWS_PROFILE=dev node scripts/backfill-enrich.mjs --limit 10 # 試しに10枚だけ
+//
+// ⚠ 重要: このスクリプトは DDB を更新するだけ。フロントが読む公開射影 viewer/metadata.json は
+//   update-images Lambda が作るので、バックフィル完了後に1回だけ手動invokeして再生成すること:
+//   aws lambda invoke --function-name WIPUploaderUpdateImagesJsonFunction --payload '{}' \
+//     --cli-binary-format raw-in-base64-out --profile dev --region ap-northeast-1 /tmp/upd.json
+//   (DDB全スキャン→metadata.json/images.json再生成→CloudFront invalidate まで自動。費用ゼロ)
+//   ※関数名は LIVE スタックの WIPUploader 接頭辞を厳守(別スタック ImageUploader* は触らない)。
 //
 // 環境変数で上書き可:
 //   REGION(既定 ap-northeast-1) / METADATA_TABLE / ENRICH_FUNCTION / CONCURRENCY(既定 2)

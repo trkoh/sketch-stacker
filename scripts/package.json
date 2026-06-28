@@ -1,0 +1,11 @@
+{
+  "name": "sketch-stacker-scripts",
+  "version": "1.0.0",
+  "description": "U2 backfill / ops scripts (run locally by the owner). Deps mirror the Lambda functions (#30 deterministic bundling).",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.700.0",
+    "@aws-sdk/client-lambda": "^3.700.0"
+  }
+}
