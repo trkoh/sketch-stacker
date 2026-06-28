@@ -126,10 +126,13 @@ async function generateTags(b64) {
   } catch (e) {
     return [];
   }
-  return (Array.isArray(tags) ? tags : [])
+  // モデルは同じ語を重複して返すことがある。autoTags は DynamoDB の String Set(SS) に格納するが
+  // SS は重複を許さず、重複があると UpdateItem 全体が ValidationException で失敗する(埋め込みも巻き添えで落ちる)。
+  // よってここで重複を除去してから返す。
+  const cleaned = (Array.isArray(tags) ? tags : [])
     .filter((t) => typeof t === 'string' && t.trim().length > 0)
-    .map((t) => t.trim())
-    .slice(0, MAX_TAGS);
+    .map((t) => t.trim());
+  return [...new Set(cleaned)].slice(0, MAX_TAGS);
 }
 
 /**
