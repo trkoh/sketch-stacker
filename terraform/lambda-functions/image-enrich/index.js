@@ -29,11 +29,28 @@ async function getImageBytes(bucket, key) {
 }
 
 /**
+ * 実バイトのマジックナンバーから画像形式を判定する。
+ * 既存画像には拡張子が .png でも中身が JPEG 等のものが混ざっており、Bedrock は
+ * 申告した format と実体の不一致を ValidationException で弾く(= 埋め込み/タグ両方失敗)。
+ * よって拡張子ではなく実バイトで判定し、正しい format を Bedrock に渡す。
+ * Nova(埋め込み/Lite) は png/jpeg/gif/webp を受け付ける。判定不能は png にフォールバック。
+ * @param {Buffer} buf 画像バイト列
+ * @returns {'png'|'jpeg'|'gif'|'webp'} 画像形式
+ */
+function detectImageFormat(buf) {
+  if (buf.length >= 4 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'png';
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'jpeg';
+  if (buf.length >= 3 && buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return 'gif';
+  if (buf.length >= 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') return 'webp';
+  return 'png';
+}
+
+/**
  * Nova マルチモーダル埋め込みで画像をベクトル化する(検索インデックス用)。
  * @param {string} b64 base64エンコード済み画像
  * @returns {Promise<number[]>} 埋め込みベクトル
  */
-async function embedImage(b64) {
+async function embedImage(b64, format) {
   const body = {
     schemaVersion: 'nova-multimodal-embed-v1',
     taskType: 'SINGLE_EMBEDDING',
@@ -41,7 +58,7 @@ async function embedImage(b64) {
       embeddingPurpose: 'GENERIC_INDEX', // インデックス作成用(検索クエリ側は IMAGE_RETRIEVAL を使う)
       embeddingDimension: Number(process.env.EMBEDDING_DIMENSION || '1024'),
       image: {
-        format: 'png',
+        format, // 実バイトから判定した形式(png/jpeg/gif/webp)。拡張子は当てにしない。
         detailLevel: 'STANDARD_IMAGE',
         source: { bytes: b64 }, // 25MB(base64後)以内のインライン。本アプリのupload上限は10MB。
       },
@@ -70,7 +87,7 @@ async function embedImage(b64) {
  * @param {string} b64 base64エンコード済み画像
  * @returns {Promise<string[]>} 日本語タグ配列(最大 MAX_TAGS 件)
  */
-async function generateTags(b64) {
+async function generateTags(b64, format) {
   const modelId = process.env.TAG_MODEL_ID;
   const prompt = 'この画像はユーザーが描いた絵です。後で検索で見つけやすくするための日本語タグを付けてください。'
     + `描かれているもの(被写体・モチーフ・場面)、画風や画材、色合い、雰囲気など、その絵を表す語を${MAX_TAGS}個以内で自由に。`
@@ -85,7 +102,7 @@ async function generateTags(b64) {
           {
             role: 'user',
             content: [
-              { image: { format: 'png', source: { bytes: b64 } } },
+              { image: { format, source: { bytes: b64 } } },
               { text: prompt },
             ],
           },
@@ -99,7 +116,7 @@ async function generateTags(b64) {
           {
             role: 'user',
             content: [
-              { type: 'image', source: { type: 'base64', media_type: 'image/png', data: b64 } },
+              { type: 'image', source: { type: 'base64', media_type: `image/${format}`, data: b64 } },
               { type: 'text', text: prompt },
             ],
           },
@@ -148,9 +165,11 @@ exports.handler = async (event) => {
 
   const bytes = await getImageBytes(process.env.IMAGE_BUCKET, imageId);
   const b64 = bytes.toString('base64');
+  // 拡張子が .png でも中身が JPEG 等のことがあるので実バイトで形式判定して Bedrock に渡す。
+  const format = detectImageFormat(bytes);
 
   // 埋め込みとタグは独立なので並列化(片方失敗でも他方は活かす)。
-  const [embedResult, tagResult] = await Promise.allSettled([embedImage(b64), generateTags(b64)]);
+  const [embedResult, tagResult] = await Promise.allSettled([embedImage(b64, format), generateTags(b64, format)]);
 
   const exprNames = {};
   const exprValues = {};
