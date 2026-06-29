@@ -37,12 +37,15 @@ const LIMIT = limitIdx >= 0 ? Number(args[limitIdx + 1]) : Infinity;
 const ddb = new DynamoDBClient({ region: REGION });
 const lambda = new LambdaClient({ region: REGION });
 
-/** メタデータテーブルを全件スキャンし、対象 imageId 一覧を返す。 */
+/** メタデータテーブルを全件スキャンし、対象 imageId 一覧を返す。
+ * ConsistentRead=true: 直前の enrich 書き込みを確実に反映した上で対象を選ぶ。
+ * 既定の結果整合スキャンだと、直前バッチで埋め込み済みの画像を「未処理」と誤認して
+ * 再処理(=再課金)し、逆に本当に未処理の画像を取りこぼして収束しない問題があった。 */
 async function listTargets() {
   const ids = [];
   let lastKey;
   do {
-    const res = await ddb.send(new ScanCommand({ TableName: TABLE, ExclusiveStartKey: lastKey }));
+    const res = await ddb.send(new ScanCommand({ TableName: TABLE, ExclusiveStartKey: lastKey, ConsistentRead: true }));
     for (const it of res.Items || []) {
       const hasEmbedding = !!(it.embedding && it.embedding.S);
       if (ALL || !hasEmbedding) ids.push(it.imageId.S);
@@ -71,6 +74,8 @@ async function main() {
 
   let done = 0;
   let failed = 0;
+  let embedded = 0; // 埋め込みが実際に書けた件数(=検索母集団に入る)
+  let tagged = 0;   // タグが書けた件数
   // 単純な固定並列ワーカーで順次消化(Bedrockのスロットリングを避けるため低並列)。
   const queue = [...targets];
   async function worker() {
@@ -79,6 +84,8 @@ async function main() {
       try {
         const r = await enrich(id);
         done += 1;
+        if (r.embedded) embedded += 1;
+        if (r.tagged) tagged += 1;
         console.log(`[${done + failed}/${targets.length}] ${id} ok embedded=${r.embedded} tagged=${r.tagged}`);
       } catch (e) {
         failed += 1;
@@ -87,7 +94,9 @@ async function main() {
     }
   }
   await Promise.all(Array.from({ length: Math.max(1, CONCURRENCY) }, worker));
-  console.log(`完了: 成功 ${done} / 失敗 ${failed}`);
+  // 「成功」は enrich が例外を投げなかった件数。embedding/tag は片方だけ成功もあるので別集計する
+  // （embedded < 成功 のときは埋め込みだけ失敗＝そのぶん未処理として残る。再実行で回収）。
+  console.log(`完了: 成功 ${done} / 失敗 ${failed}（うち embedded=${embedded} / tagged=${tagged}）`);
 }
 
 main().catch((e) => {
