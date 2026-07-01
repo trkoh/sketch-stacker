@@ -1,8 +1,9 @@
-# 引き継ぎ書 — sketch-stacker Phase 1（2026-06-27 時点）
+# 引き継ぎ書 — sketch-stacker Phase 1（2026-07-01 時点）
 
 ## 0. 一言サマリ
 描いた絵に「振り返りメモ＋自動タグ＋意味検索」を足す Phase 1。
-**Inception 完了 / Construction U1・U2 は本番反映＆実機検証済み / U3 着手中（U3a=タグ絞り込みは PR #32）/ U4 未着手。**
+**Phase 1 機能的に完了。U1〜U4 すべて本番反映＆実機検証済み。既存全600枚のバックフィル完了（601 DDBレコードが embedding 済・タグ付き594）＝ギャラリー全600枚がタグ絞り込み・意味検索の対象。**
+**残: PR #40（孤立画像登録スクリプト＋本ドキュメント）マージのみ / ADR-005（検索エンドポイント=オーナー限定）オーナー批准待ち。次フェーズは Phase 2＝リファレンス写真管理（未着手・要 Inception）。**
 
 ---
 
@@ -32,13 +33,19 @@
 3. **S3 ObjectCreated(.png)** → **update-images** → `images.json`（キー配列）＋ `viewer/metadata.json`（`imageId/uploadedAt/autoTags/memo`※memoは公開のみ）を生成し CloudFront invalidate。
 4. **フロント** → `images.json`＋`metadata.json` を取得し表示（U3aでタグ絞り込み）。
 
-## 4. 進捗（AI-DLC / Construction）
-- Inception 完了：requirements / ADR-001〜004 / 実行計画（`aidlc-docs/inception/`）
-- **U1 メタ基盤**（PR #28）反映済
-- **U2 自動タグ＋埋め込み**（#29）＋ 依存バンドル（#30）＋ タグモデル修正（#31）反映済・**実機検証済**
-  - 実証: 実画像 enrich→`embedded:true/tagged:true`、DDBに日本語タグ10個＋1024次元ベクトル、API upload→自動enrich連鎖も確認
-- **U3 検索**：U3a タグ絞り込み=**PR #32 オープン（未マージ）**。U3b 意味検索=**未着手**
-- **U4 メモ編集＋非公開API**：**未着手**
+## 4. 進捗（AI-DLC / Construction）— Phase 1 完了
+- Inception 完了：requirements / ADR-001〜005 / 実行計画（`aidlc-docs/inception/`）
+- **U1 メタ基盤**（#28）／**U2 自動タグ＋埋め込み**（#29/#30/#31）反映済・実機検証済
+- **U3a タグ絞り込み**（#32・フロント client-side・公開）反映済
+- **U3b 意味検索**（#34・query-embed Lambda＋`POST /search`＋`viewer/embeddings.json`射影＋ブラウザ内コサイン。**オーナー限定**=既存authorizer・ADR-005=A）反映済・実機検証済
+- **U4 メモ編集＋非公開API**（#36・memos Lambda＋`GET/PUT /memos/{key}`＋管理モードUI・デフォルト非公開）反映済・実機検証済
+- **バックフィル完了**：全601 DDBレコード embedding済（タグ付き594）。`embeddings.json`=601 / `metadata.json` タグ付き594 / `images.json`=600（viewer/混入0）。ギャラリー全600枚がタグ・検索対象。
+- **バックフィルで見つけて直した実バグ**（全て本番反映）:
+  - **#35** タグ重複→DDB String Set拒否でUpdateItem丸ごと失敗（埋め込みも巻き添え）→ Setで重複除去。
+  - **#37** `images.json`にviewer/運用ファイル混入→ギャラリーに壊れたタイル→ 接頭辞除外（フロント＋update-images）。
+  - **#39** 中身JPEGなのに.png拡張子→enrichが`format:'png'`決め打ち→Bedrock MIME不一致で両失敗→ マジックナンバーで実形式判定。
+  - **#38** backfillの対象スキャンが結果整合で収束せず→ `ConsistentRead`化。
+  - **#40（マージ待ち）** バケットにあってDDB未登録のJPG/JPEG 80枚を登録する `scripts/register-orphan-images.mjs`。登録→enrichで全600枚カバー達成。
 
 ## 5. 重要な決定・ハマりどころ（必読）
 - **ADR-004（タグモデル）= `amazon.nova-lite-v1:0`**。理由（**実機検証で判明**）：`anthropic.claude-3-haiku-20240307-v1:0` は **Legacy化で InvokeModel 不可**、Claude 3.5系は **EOL**、Claude 4.5系（`us.anthropic.claude-haiku-4-5-*` 等）は active だが **アカウントへの Anthropic 用途フォーム提出が必須**（オーナーのコンソール操作）。Nova Lite は用途フォーム不要・即動作・低コスト・画像入力対応。
@@ -51,17 +58,27 @@
 - **AWS SSOトークンは失効する**（数分〜数日）。AWS操作前に必ず `aws sso login --profile dev`。
 - **terraform state はローカル**（S3 backend 未設定）。消失・ロック無しに注意。
 
-## 6. 残作業（優先順）
-1. ~~**PR #32（U3aタグ絞り込み）レビュー→マージ**~~ → **完了**（2026-06-28 マージ済 `41c778f`・Pages デプロイ成功）。※ `metadata.json` にタグが載るのは **enrich済み画像のみ**＝バックフィル前はタグが少ない。
-2. **バックフィル（既存 518枚・未処理 516枚）**：`cd scripts && npm install`（初回のみ）→ `aws sso login --profile dev` → `AWS_PROFILE=dev REGION=ap-northeast-1 node scripts/backfill-enrich.mjs --limit 5`（試走）→ 全量。**一時費用 ≈ $10.5**（埋め込み≈$0.5＋タグ≈$10）。
-   - ⚠ **バックフィルは DDB を更新するだけ**。完了後に **update-images を1回手動invoke**して公開射影 `viewer/metadata.json` を再生成すること（下記）。これをしないとフロントにタグが出ない。
-     `aws lambda invoke --function-name WIPUploaderUpdateImagesJsonFunction --payload '{}' --cli-binary-format raw-in-base64-out --profile dev --region ap-northeast-1 /tmp/upd.json`
-   - ✅ **通し検証済（2026-06-28）**：1枚 enrich→DDB(autoTags10/embedding1024)→update-images→metadata.json(518件中タグ付き3件、対象画像にタグ反映) を実機確認。スクリプトは依存マニフェスト欠如で初回失敗→`scripts/package.json` 追加で修正済。
-   - 実数注記: ハンドオフ初版の「592枚」は概数。DDB 実数は **518件**（処理済2件＝U2検証分）。
-3. **U3b 意味検索**：(a) update-images に embedding 射影（**別ファイル `viewer/embeddings.json` 推奨**＝ギャラリー軽量化・検索時に遅延ロード）(b) **クエリ埋め込みLambda＋APIルート**（Nova text 埋め込み・`embeddingPurpose=IMAGE_RETRIEVAL`・dim1024）(c) フロント検索ボックス＋ブラウザ内コサイン。
-   - 設計判断（検索エンドポイントを**公開**にするか**オーナー限定(既存authorizer)**にするか＝コスト/悪用リスク）は **ADR-005 で裁定推奨**（憲法「断定しない」）。
-4. **U4 メモ編集＋非公開API**：`GET/PUT /memos`（Basic認証・既存authorizer再利用＝ADR-003）。管理UI（`?admin`）にメモ編集＋公開トグル。
-5. （任意）terraform state を S3 backend 化。残セキュリティ #14–20 は完了済み。
+## 6. 残作業
+Phase 1（U1〜U4＋バックフィル）は完了。残りは以下:
+1. **PR #40 マージ**（`scripts/register-orphan-images.mjs`＋本ドキュメント更新）。apply不要・スクリプトはローカル実行。
+2. **ADR-005 のオーナー批准**：意味検索 `POST /search` を**オーナー限定（案A・実装済）**のままにするか、公開（案B・要レート制限）にするか。公開化するなら method の authorizer を外す1行＋別ADRでレート制限。
+3. **（任意・軽微）** DDBゴーストレコード1件（S3に画像実体なし・過去削除分）。images.json に出ないので表示・検索影響なし。消すなら明示指示で。
+4. **（任意）** terraform state を S3 backend 化（現状ローカル・ロック無し）。
+5. **次フェーズ = Phase 2（リファレンス写真管理）**：未着手。issue #21 の構想。新機能なので Inception（要件ヒアリング）から。
+
+### バックフィル再実行が要るとき（新規追加画像や再処理）
+```
+cd scripts && npm install            # 初回のみ
+aws sso login --profile dev
+# バケットにあってDB未登録の画像を登録（JPG/JPEG等）
+AWS_PROFILE=dev REGION=ap-northeast-1 node scripts/register-orphan-images.mjs
+# 未embedding を enrich（JPEG対応・ConsistentReadで収束）
+AWS_PROFILE=dev REGION=ap-northeast-1 CONCURRENCY=1 node scripts/backfill-enrich.mjs
+# 公開射影を再生成（★これを忘れるとフロントに反映されない。enrich直後は結果整合ラグで
+#   件数が古く出ることがある＝少し待って もう一度叩けば正しい件数になる）
+aws lambda invoke --function-name WIPUploaderUpdateImagesJsonFunction --payload '{}' \
+  --cli-binary-format raw-in-base64-out --profile dev --region ap-northeast-1 /tmp/upd.json
+```
 
 ## 7. 役割分担
 - **オーナーのみ**：`terraform apply`、`aws sso login`、Anthropic用途フォーム提出、バックフィル実行（費用発生）、PRマージ。
