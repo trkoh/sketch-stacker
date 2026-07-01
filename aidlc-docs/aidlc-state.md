@@ -2,9 +2,9 @@
 
 - Workflow: AI-DLC v1.0.0
 - Workspace: **Brownfield**（既存: React/Vite + Terraform + Lambda）
-- Phase: 🟢 CONSTRUCTION（U1/U2/U3a 完了・本番反映済）
-- Stage: **U3a マージ済（#32）→ 次は バックフィル（オーナー）/ U3b意味検索 or U4メモ**
-- Updated: 2026-06-28
+- Phase: 🟢 CONSTRUCTION **完了**（U1〜U4 本番反映・実機検証済）→ Phase 1 機能的に完了
+- Stage: **全Unit apply済＋バックフィル完了（全600枚がタグ・検索対象）。残: PR #40 マージのみ**
+- Updated: 2026-07-01
 
 ## Intent
 Phase 1（issue #21 / #22）: 描いた絵に「振り返りメモ」を紐づけ、**手動タグ無しでモチーフを意味検索**できるギャラリーへ拡張する。
@@ -36,8 +36,20 @@ Phase 1（issue #21 / #22）: 描いた絵に「振り返りメモ」を紐づ�
 - [x] U2 自動タグ＋埋め込み（#29/#30/#31 マージ済・実機検証済）
 - [x] U3a タグ絞り込み（#32 マージ済・Pages デプロイ成功 2026-06-28）
 - [x] U3b 意味検索（#34 マージ・apply・実機検証済 2026-06-28）
-- [~] U4 メモ編集＋非公開API（PR #36・ADR-003 で authorizer 再利用）。memos Lambda＋GET/PUT /memos/{key}（Basic認証）＋管理モードのメモ編集UI（公開/非公開トグル・デフォルト非公開）。保存後 update-images を非同期invokeして公開射影更新。terraform plan / lint / build 通過。apply はオーナー
-- [~] バックフィル（2026-06-28 実行）: 469枚 embedding / 464枚 tagged を本番反映（metadata.json 518件中タグ付き464、embeddings.json 469件）。**残49枚は enrich の重複タグバグで失敗**＝#35 で修正（マージ済）、apply 後に再実行で回収。
+- [x] U4 メモ編集＋非公開API（#36 マージ・apply・実機検証済）。memos Lambda＋GET/PUT /memos/{key}（Basic認証）＋管理モードのメモ編集UI（公開/非公開トグル・デフォルト非公開）。
+- [x] バックフィル完了（2026-06〜07）: **全601 DDBレコードが embedding 済（タグ付き594）、embeddings.json=601・images.json=600（viewer/混入0）**。ギャラリー全600枚がタグ・検索対象。
+
+## バックフィルで判明・修正した実バグ（すべて本番反映済）
+- **#35**: タグモデルが重複タグを返すと DynamoDB String Set が拒否 → UpdateItem 丸ごと失敗（埋め込みも巻き添え）。→ タグを Set で重複除去。
+- **#37**: `images.json` に viewer/ 運用ファイルが混入しギャラリーに壊れたタイル表示。→ フロント/バックエンド両方で viewer/ 接頭辞除外。
+- **#39**: 中身JPEGなのに .png 拡張子の画像で enrich が format:'png' 決め打ち → Bedrock MIME不一致で埋め込み/タグ両失敗。→ マジックナンバーで実形式判定（png/jpeg/gif/webp）。実Invoke検証済。
+- **#38**: backfill の対象スキャンが結果整合で収束しなかった → ConsistentRead 化＋embedded/tagged 別集計。
+- **#40（マージ待ち）**: バケットにあってDDB未登録だった JPG/JPEG 80枚を登録するスクリプト（`scripts/register-orphan-images.mjs`）。登録→enrich 済で全600枚カバー達成。
+
+## 既知の軽微な残（対応任意・未着手）
+- DDBに画像実体の無いゴーストレコードが1件（過去削除画像）。images.json に出ないので表示・検索影響なし。
+- ADR-005（意味検索エンドポイント）= オーナー限定（案A）で実装・**オーナー批准待ち**。
+- delete は S3 論理削除のみで DDBレコードが残る設計（既存仕様）。
 
 ## U2 設計メモ（2026-06-27 オーナー承認: A案=非同期）
 - 生成タイミング: upload Lambda が S3保存+基本レコード作成の後に **enrich Lambda を Event invoke**（fire-and-forget）。S3 ObjectCreated は update-images が同条件で使用中=2本目トリガ不可のため、トリガ機構のみS3でなく直接async invoke（承認済み性質: 即返し/疎結合/障害隔離/バックフィル再利用は維持）。
