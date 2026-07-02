@@ -58,6 +58,9 @@ resource "aws_s3_bucket_policy" "image_bucket" {
   bucket = aws_s3_bucket.image_bucket.id
 
   policy = jsonencode({
+    # S3 auto-injects a policy Version if omitted, causing a perpetual plan diff.
+    # Pin it explicitly so config matches what AWS stores.
+    Version = "2012-10-17"
     Statement = [
       {
         Action = "s3:GetObject"
