@@ -1,9 +1,10 @@
-# 引き継ぎ書 — sketch-stacker Phase 1（2026-07-01 時点）
+# 引き継ぎ書 — sketch-stacker Phase 1（2026-07-03 時点）
 
 ## 0. 一言サマリ
 描いた絵に「振り返りメモ＋自動タグ＋意味検索」を足す Phase 1。
-**Phase 1 機能的に完了。U1〜U4 すべて本番反映＆実機検証済み。既存全600枚のバックフィル完了（601 DDBレコードが embedding 済・タグ付き594）＝ギャラリー全600枚がタグ絞り込み・意味検索の対象。**
-**残: PR #40（孤立画像登録スクリプト＋本ドキュメント）マージのみ / ADR-005（検索エンドポイント=オーナー限定）オーナー批准待ち。次フェーズは Phase 2＝リファレンス写真管理（未着手・要 Inception）。**
+**Phase 1 機能的に完了。U1〜U4 すべて本番反映＆実機検証済み。既存画像のバックフィル完了（DDB 603件／S3 603枚で一致・タグ付き596・enrich未了はわずか7件）＝ギャラリー全画像がタグ絞り込み・意味検索の対象。**
+**インフラ運用も刷新（2026-07-02）：state を S3 backend 化（#41）＋ GitHub Actions OIDC で鍵レス CI 化（#42）。以後 terraform は push/マージで CI が apply する「CI 正本」運用。ローカル apply はしない（§5/§7）。**
+**残: ADR-005（検索エンドポイント=オーナー限定）オーナー批准待ち。次フェーズは Phase 2＝リファレンス写真管理（未着手・要 Inception）。全体ロードマップは §9。**
 
 ---
 
@@ -39,13 +40,16 @@
 - **U3a タグ絞り込み**（#32・フロント client-side・公開）反映済
 - **U3b 意味検索**（#34・query-embed Lambda＋`POST /search`＋`viewer/embeddings.json`射影＋ブラウザ内コサイン。**オーナー限定**=既存authorizer・ADR-005=A）反映済・実機検証済
 - **U4 メモ編集＋非公開API**（#36・memos Lambda＋`GET/PUT /memos/{key}`＋管理モードUI・デフォルト非公開）反映済・実機検証済
-- **バックフィル完了**：全601 DDBレコード embedding済（タグ付き594）。`embeddings.json`=601 / `metadata.json` タグ付き594 / `images.json`=600（viewer/混入0）。ギャラリー全600枚がタグ・検索対象。
+- **バックフィル完了**：DDB 603件 = S3 603枚で一致（#40の孤立JPG/JPEG登録も反映済）。タグ付き596 / enrich未了7件（軽微・再実行で解消可、§6手順）。ギャラリー全画像がタグ・検索対象。
+- **インフラ運用刷新（2026-07-02・#41/#42）**：
+  - **#41** terraform state を S3 backend 化（`sketch-stacker-tfstate-791464527050`・バージョニング/暗号化/ネイティブロック）＋ S3バケットポリシーの永久ドリフト解消。
+  - **#42** GitHub Actions + OIDC で鍵レス CI 化。`.github/workflows/terraform.yml` が PR で `plan`・main への push で `apply`。認証は OIDCロール `sketch-stacker-github-actions`（最小権限・信頼先=当repoの main+PRのみ）。CI入力は repo変数(`AWS_ROLE_ARN`/`IMAGE_BUCKET_NAME`/`CLOUDFRONT_DISTRIBUTION_ID`)＋secret(`BASIC_AUTH_USERNAME`)＝gitignoreの`terraform.tfvars`を代替。**CI初回 apply 成功で実地稼働確認済み。**
 - **バックフィルで見つけて直した実バグ**（全て本番反映）:
   - **#35** タグ重複→DDB String Set拒否でUpdateItem丸ごと失敗（埋め込みも巻き添え）→ Setで重複除去。
   - **#37** `images.json`にviewer/運用ファイル混入→ギャラリーに壊れたタイル→ 接頭辞除外（フロント＋update-images）。
   - **#39** 中身JPEGなのに.png拡張子→enrichが`format:'png'`決め打ち→Bedrock MIME不一致で両失敗→ マジックナンバーで実形式判定。
   - **#38** backfillの対象スキャンが結果整合で収束せず→ `ConsistentRead`化。
-  - **#40（マージ待ち）** バケットにあってDDB未登録のJPG/JPEG 80枚を登録する `scripts/register-orphan-images.mjs`。登録→enrichで全600枚カバー達成。
+  - **#40（マージ済）** バケットにあってDDB未登録のJPG/JPEG 80枚を登録する `scripts/register-orphan-images.mjs`。登録→enrichで全画像カバー達成（DDB 603=S3 603）。
 
 ## 5. 重要な決定・ハマりどころ（必読）
 - **ADR-004（タグモデル）= `amazon.nova-lite-v1:0`**。理由（**実機検証で判明**）：`anthropic.claude-3-haiku-20240307-v1:0` は **Legacy化で InvokeModel 不可**、Claude 3.5系は **EOL**、Claude 4.5系（`us.anthropic.claude-haiku-4-5-*` 等）は active だが **アカウントへの Anthropic 用途フォーム提出が必須**（オーナーのコンソール操作）。Nova Lite は用途フォーム不要・即動作・低コスト・画像入力対応。
@@ -54,17 +58,19 @@
 - **教訓: モデルの可用性/APIサポートはモデルカードを鵜呑みにせず、実 InvokeModel で確認すること。**
 - **ADR-002（検索方式）= Nova埋め込み＋ブラウザ内コサイン総当たり**（小規模ゆえベクトルDB不要）。
 - 全モデルID/Bedrockリージョン/次元は **TF変数**（`terraform/variables.tf`）で差し替え可。
-- **Lambda依存同梱（#30）**：Node22ランタイムのSDK同梱は AWS保証外 → `upload`/`image-enrich` は `package.json`＋`package-lock.json`＋`terraform_data` の `npm ci` で同梱。**apply実行ホストに node/npm 必須**。
-- **AWS SSOトークンは失効する**（数分〜数日）。AWS操作前に必ず `aws sso login --profile dev`。
-- **terraform state はローカル**（S3 backend 未設定）。消失・ロック無しに注意。
+- **Lambda依存同梱（#30）**：Node22ランタイムのSDK同梱は AWS保証外 → `upload`/`image-enrich` 等は `package.json`＋`package-lock.json`＋`terraform_data` の `npm ci` で同梱。**apply実行ホストに node/npm 必須**（CIランナーには両方あり）。
+- **★ デプロイは CI 正本（2026-07-02〜）**：terraform の apply は **GitHub Actions（OIDC鍵レス）** が main への push で実行。**ローカル（特にMac）で `terraform apply` はしない。** 理由：重い4関数（upload/image-enrich/memos/query_embed）は `archive_file` が node_modules込みで zip 化するため、macOSビルドと Linux(CI)ビルドで `source_code_hash` が食い違う。CI同士は決定的で安定だが、**Mac のローカル `plan` はこの4件を常に「変更あり」と表示する＝正常・無視してよい**。編集/ビルド/テストはどこでやってもよいが、反映は push→マージ経由。
+- **AWS鍵の要否**：CI経由デプロイは鍵不要（OIDC）。ただし**コンテナ/ローカルから直接 `aws` CLI や スクリプト（バックフィル等）を叩く場合は認証が必要** → `aws sso login --profile dev`（SSOトークンは数分〜数日で失効）。「直接AWSを触る操作」を無くしたければ運用ジョブをワークフロー化（§6-6）。
+- **terraform state は S3 backend**（`sketch-stacker-tfstate-791464527050`・バージョニング＋ネイティブロック）。ローカルの `terraform/terraform.tfstate` は移行済みの旧コピー（gitignore・使わない）。
 
 ## 6. 残作業
-Phase 1（U1〜U4＋バックフィル）は完了。残りは以下:
-1. **PR #40 マージ**（`scripts/register-orphan-images.mjs`＋本ドキュメント更新）。apply不要・スクリプトはローカル実行。
-2. **ADR-005 のオーナー批准**：意味検索 `POST /search` を**オーナー限定（案A・実装済）**のままにするか、公開（案B・要レート制限）にするか。公開化するなら method の authorizer を外す1行＋別ADRでレート制限。
-3. **（任意・軽微）** DDBゴーストレコード1件（S3に画像実体なし・過去削除分）。images.json に出ないので表示・検索影響なし。消すなら明示指示で。
-4. **（任意）** terraform state を S3 backend 化（現状ローカル・ロック無し）。
-5. **次フェーズ = Phase 2（リファレンス写真管理）**：未着手。issue #21 の構想。新機能なので Inception（要件ヒアリング）から。
+Phase 1（U1〜U4＋バックフィル）完了。インフラ運用刷新（#41/#42）完了。残りは以下:
+1. **ADR-005 のオーナー批准**：意味検索 `POST /search` を**オーナー限定（案A・実装済）**のままにするか、公開（案B・要レート制限）にするか。公開化するなら method の authorizer を外す1行＋別ADRでレート制限。
+2. **（軽微）enrich未了7件**：`autoTags` 無しのDDBレコード7件。§末尾のバックフィル手順で解消可（要AWS認証・少額）。
+3. **（任意・軽微）** DDBゴーストレコード（S3に実体なし・過去削除分）があれば掃除。images.json に出ないので表示・検索影響なし。
+4. **次フェーズ = Phase 2（リファレンス写真管理）**：未着手。issue #21 の構想。新機能なので Inception（要件ヒアリング）から。
+5. **（任意）OIDCロールの権限を permissions boundary で締める**：現状 `iam:*` を含む（terraform が IAM を管理するため必要）。信頼先は当repo main+PR に限定済みだが、エスカレーション余地を塞ぐなら boundary を追加。
+6. **（任意）運用ジョブのワークフロー化**：バックフィル / `register-orphan-images` / lambda invoke / images.json 再生成 を `workflow_dispatch` 化すれば、スマホからボタン起動で CI が鍵レス実行（＝直接 `aws` CLI を叩く場面を無くせる）。
 
 ### バックフィル再実行が要るとき（新規追加画像や再処理）
 ```
@@ -81,10 +87,47 @@ aws lambda invoke --function-name WIPUploaderUpdateImagesJsonFunction --payload 
 ```
 
 ## 7. 役割分担
-- **オーナーのみ**：`terraform apply`、`aws sso login`、Anthropic用途フォーム提出、バックフィル実行（費用発生）、PRマージ。
-- **エージェント**：設計・実装・PR作成・`terraform plan` 提示・実機検証（SSO有効時）。main 直pushしない。
+- **デプロイ（terraform apply）= CI（GitHub Actions・OIDC鍵レス）**：main への push（＝PRマージ）で自動実行。人手 apply は不要。
+- **オーナーのみ**：PRマージ（＝デプロイ承認）、Anthropic用途フォーム提出、バックフィル等の課金を伴う直接実行の承認、`aws sso login`（直接AWSを触る作業時）。
+- **エージェント**：設計・実装・PR作成・CIの `plan` 確認・実機検証（SSO有効時）。main 直pushしない・ローカル apply しない。
 
 ## 8. 動作確認の要点（apply後）
 - enrich直接: `aws lambda invoke --function-name WIPUploader-ImageEnrichFunction --payload '{"imageId":"<key>"}' ...`
 - DDB確認: `aws dynamodb get-item --table-name WIPUploader-ImageMetadata --key '{"imageId":{"S":"<key>"}}'` → `embedding`(JSON文字列)/`autoTags`(SS)/`enrichedAt` を確認
 - 全文手順はセッション履歴の「apply手順 STEP0〜8」を参照。
+
+## 9. 全体ロードマップ（issue/PR 対応・done/todo 一覧）
+既存の全 issue / PR を棚卸しした現況（2026-07-03）。
+
+### ✅ 完了（マージ / クローズ済）
+| 領域 | 内容 | issue / PR |
+|---|---|---|
+| 基盤移行 | CloudFormation → Terraform 移行 | #10 / PR多数（初期） |
+| 開発プロセス | AI-DLC ワークフロー導入 | #22,#23 / PR #23,#27 |
+| セキュリティ堅牢化 | 認証情報ログ出力/権限共有/ワイルドカードARN/source_arn/APIログ/アップロード検証/tfvars gitignore | #14〜#20 / PR #24,#25,#26 |
+| メタ基盤(U1) | DynamoDB 導入（=#11 の実質的な解） | PR #28 |
+| 自動タグ＋埋め込み(U2) | Nova Lite タグ＋Nova 埋め込み・非同期enrich | PR #29,#30,#31,#35,#39 |
+| タグ絞り込み(U3a) | フロントのタグフィルタ | PR #32 |
+| 意味検索(U3b) | query-embed Lambda＋`POST /search`＋ブラウザ内コサイン | PR #34 |
+| メモ編集＋非公開API(U4) | memos Lambda＋`GET/PUT /memos`＋管理UI・デフォルト非公開 | PR #36 |
+| バックフィル/修正 | 収束スキャン・孤立画像登録・viewer混入除去 | PR #37,#38,#40 |
+| MCPセットアップ | MCPサーバ導入 | #2 |
+| 画像管理の軽量方式検討 | DynamoDB 方式に収束（役目終了） | #12 |
+| **インフラ運用刷新（今回）** | **S3 backend 化 / OIDC 鍵レス CI 化** | **#41,#42** |
+
+### 🔜 やりたいこと（open issue）
+| 優先 | 内容 | issue | メモ |
+|---|---|---|---|
+| 高(メタ) | ロードマップ正典 / オンボーディング入口 | #21,#22 | 常時参照。クローズしない |
+| 高 | ADR-005 批准（検索=オーナー限定 のまま or 公開） | — | §6-1。オーナー判断待ち |
+| 中 | **Phase 2：リファレンス写真管理** | #21(Phase2) | 未着手・要 Inception（撮影メモ紐付け・絵↔写真の視覚類似サジェスト） |
+| 低 | Processing/P5.js 作品対応（動画/GIF/インタラクティブ表示） | #13 | 表示層の拡張。Phase 1 とは独立 |
+| 低 | 3D 積み上げビジュアル（調査→実装→通常ビュー切替） | #7,#8,#9 | 表現系。優先度低め |
+| 低 | ランダム画像ピックアップ | #5,#6 | 小機能 |
+| 低 | マルチエージェント実行機能 | #3,#4 | 実験的 |
+| 低 | MCPサーバ選定/ブラウザ操作 調査 | #1 | #2 で一部着手済 |
+
+### 🧹 棚卸しメモ（クローズ候補・要オーナー判断）
+- **#11（images.json→DB移行検討）**：U1 の DynamoDB 導入で**実質達成済み**。クローズ候補。
+- **#1（MCP調査）**：#2 で着手済み。現状のスコープと照らして要否を判断。
+- 旧構想 #3〜#9,#13 は Phase 1（制作ループ支援）確定前のアイデア。#21 のビジョンと突き合わせ、活かす/畳むを仕分けると open issue が締まる。
