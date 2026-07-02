@@ -25,6 +25,13 @@ permissions:
 env:
   AWS_REGION: ap-northeast-1
   TF_VERSION: "1.15.6"
+  # Stack inputs that live only in the (gitignored) local terraform.tfvars are
+  # supplied to CI via repo variables/secrets as TF_VAR_* env vars. Empty
+  # aws_profile makes the provider fall back to OIDC creds (no named profile).
+  TF_VAR_aws_profile: ""
+  TF_VAR_image_bucket_name: ${{ vars.IMAGE_BUCKET_NAME }}
+  TF_VAR_cloudfront_distribution_id: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+  TF_VAR_basic_auth_username: ${{ secrets.BASIC_AUTH_USERNAME }}
 
 jobs:
   terraform:
@@ -54,9 +61,8 @@ jobs:
 
       - name: Terraform Plan
         id: plan
-        # aws_profile='' -> provider falls back to OIDC creds (no named profile)
-        run: terraform plan -input=false -no-color -var 'aws_profile='
+        run: terraform plan -input=false -no-color
 
       - name: Terraform Apply
         if: github.event_name == 'push'
-        run: terraform apply -input=false -auto-approve -no-color -var 'aws_profile='
+        run: terraform apply -input=false -auto-approve -no-color
