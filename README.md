@@ -55,3 +55,45 @@ curl -X POST \
   - Lambda: S3 イベントトリガーで images.json を自動更新
 - Frontend: React
 - デプロイ: GitHub Action, GitHub Pages
+
+## 開発フロー
+
+コードは Git で管理し、**編集はどこからでも（スマホの Claude アプリ含む）**。反映は必ず **PR → main へマージ** 経由で、CI が自動でデプロイする。**main への直接 push はしない。**
+
+### デプロイの流れ
+
+```
+コード編集 → feature ブランチ → PR
+     │
+     ├─ フロント (viewer-react/) 変更  ─┐
+     └─ インフラ (terraform/) 変更     │
+                                        ▼
+                              PR 上で CI が検証
+   ・terraform 変更 → `terraform plan` を自動実行（結果を確認）
+   ・フロント変更   → lint + build
+                                        │
+                                    マージ
+                                        ▼
+                              main への push で CI が反映
+   ・フロント → GitHub Pages へ公開          （.github/workflows/deploy.yml）
+   ・インフラ → `terraform apply`（OIDC 鍵レス）（.github/workflows/terraform.yml）
+```
+
+### 基本ルール
+
+- **インフラのデプロイは CI が正本**。`terraform apply` を**手元（特に Mac）で実行しない**。
+  - 理由: 一部 Lambda は zip ビルドが OS 依存で、ローカルの `terraform plan` は該当関数を常に「変更あり」と表示する（＝正常・無視してよい）。反映は push→マージで CI に任せる。
+- **AWS の鍵は CI では不要**（GitHub Actions が OIDC で一時認証。長期キーなし）。
+  - `aws` CLI やスクリプト（バックフィル等）を**手元/コンテナから直接**叩くときだけ認証が必要 → `aws sso login --profile dev`。
+- state は S3 backend（リモート）で共有。ネイティブロックあり。
+- 詳細な設定値・運用手順・機能仕様は `CLAUDE.md` と各 issue/PR を参照。
+
+### ローカルでの確認（任意）
+
+```bash
+cd viewer-react
+npm install
+npm run dev -- --host     # 開発サーバ（モックデータ）
+npm run build             # 本番ビルド
+npm run lint              # Lint
+```
