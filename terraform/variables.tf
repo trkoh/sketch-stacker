@@ -95,9 +95,13 @@ variable "embedding_dimension" {
 variable "stack_tags" {
   description = "Common tags for all resources"
   type        = map(string)
+  # Must match the applied tags in state, otherwise CI (which has no local
+  # terraform.tfvars) would strip tags the local apply set — causing a
+  # local<->CI drift flip-flop. Keep in sync with terraform.tfvars stack_tags.
   default = {
     Project     = "image-share-app"
     ManagedBy   = "terraform"
     Environment = "dev"
+    Migration   = "from-cloudformation"
   }
 }

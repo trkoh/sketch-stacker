@@ -1,0 +1,68 @@
+name: Terraform
+
+# Keyless infra CI. On PRs touching terraform/, run `plan`; on merge to main,
+# run `apply`. AWS auth is via GitHub OIDC (no stored keys) — see
+# terraform/github-oidc.tf. This is what lets infra be driven from anywhere
+# (incl. the Claude mobile app) by just pushing/merging.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "terraform/**"
+      - ".github/workflows/terraform.yml"
+  push:
+    branches: [main]
+    paths:
+      - "terraform/**"
+      - ".github/workflows/terraform.yml"
+
+permissions:
+  id-token: write # required for OIDC
+  contents: read
+  pull-requests: write # to post the plan as a PR comment
+
+env:
+  AWS_REGION: ap-northeast-1
+  TF_VERSION: "1.15.6"
+  # Stack inputs that live only in the (gitignored) local terraform.tfvars are
+  # supplied to CI via repo variables/secrets as TF_VAR_* env vars. Empty
+  # aws_profile makes the provider fall back to OIDC creds (no named profile).
+  TF_VAR_aws_profile: ""
+  TF_VAR_image_bucket_name: ${{ vars.IMAGE_BUCKET_NAME }}
+  TF_VAR_cloudfront_distribution_id: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+  TF_VAR_basic_auth_username: ${{ secrets.BASIC_AUTH_USERNAME }}
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    # Fork PRs on a public repo get no OIDC token; skip them (owner PRs only).
+    if: >-
+      github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        run: terraform init -input=false
+
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan -input=false -no-color
+
+      - name: Terraform Apply
+        if: github.event_name == 'push'
+        run: terraform apply -input=false -auto-approve -no-color
