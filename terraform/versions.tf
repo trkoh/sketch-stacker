@@ -35,8 +35,11 @@ terraform {
 }
 
 provider "aws" {
-  region  = var.aws_region
-  profile = var.aws_profile
+  region = var.aws_region
+  # Locally we use the SSO profile (aws_profile="dev"). In CI there is no named
+  # profile — credentials come from the GitHub OIDC role via the standard AWS
+  # chain — so pass -var 'aws_profile=' to fall back to null.
+  profile = var.aws_profile != "" ? var.aws_profile : null
 }
 
 # Data sources
