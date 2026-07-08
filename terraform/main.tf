@@ -3,14 +3,14 @@
 
 # Resource IDs from CloudFormation stack discovery
 locals {
-  api_gateway_id               = "3p4utkstnb"
-  upload_function_name         = "WIPUploader-UploadFunction-hJDSjvqD9eM7"
-  authorizer_function_name     = "WIPUploader-AuthorizerFunction-7WKXvtdhJ2Lx"
-  update_images_function_name  = "WIPUploaderUpdateImagesJsonFunction"
-  upload_execution_role_name   = "WIPUploader-UploadLambdaExecutionRole-pepPv9zSfzBh"
-  update_execution_role_name   = "WIPUploader-UpdateImagesJsonLambdaExecutionRole-MhwPNOwZDB5j"
-  secrets_manager_arn          = "arn:aws:secretsmanager:ap-northeast-1:791464527050:secret:WIPUploaderSecret-SWNxHU"
-  oac_id                       = "E1Y0EK4C9ZX47D"
+  api_gateway_id              = "3p4utkstnb"
+  upload_function_name        = "WIPUploader-UploadFunction-hJDSjvqD9eM7"
+  authorizer_function_name    = "WIPUploader-AuthorizerFunction-7WKXvtdhJ2Lx"
+  update_images_function_name = "WIPUploaderUpdateImagesJsonFunction"
+  upload_execution_role_name  = "WIPUploader-UploadLambdaExecutionRole-pepPv9zSfzBh"
+  update_execution_role_name  = "WIPUploader-UpdateImagesJsonLambdaExecutionRole-MhwPNOwZDB5j"
+  secrets_manager_arn         = "arn:aws:secretsmanager:ap-northeast-1:791464527050:secret:WIPUploaderSecret-SWNxHU"
+  oac_id                      = "E1Y0EK4C9ZX47D"
   cors_policy_id              = "4f6ab204-bbcb-4a16-bb18-fb14748b8d29"
   api_resource_id             = "zu6l15"
   api_authorizer_id           = "b8w9lx"
@@ -63,9 +63,9 @@ resource "aws_s3_bucket_policy" "image_bucket" {
     Version = "2012-10-17"
     Statement = [
       {
-        Action = "s3:GetObject"
-        Effect = "Allow"
-        Resource = "${aws_s3_bucket.image_bucket.arn}/*"
+        Action    = "s3:GetObject"
+        Effect    = "Allow"
+        Resource  = "${aws_s3_bucket.image_bucket.arn}/*"
         Principal = "*"
         Condition = {
           StringEquals = {
@@ -80,11 +80,33 @@ resource "aws_s3_bucket_policy" "image_bucket" {
 resource "aws_s3_bucket_notification" "image_bucket" {
   bucket = aws_s3_bucket.image_bucket.id
 
+  # 画像のアップロード/削除だけをトリガーにする。update-images が書き戻す
+  # images.json / viewer/*.json は .json 拡張子なのでどのルールにも一致せず自己再帰しない。
+  # S3 は同一イベントで filter_suffix を重複できないため、対応形式ごとに1ブロック並べる。
   lambda_function {
     lambda_function_arn = aws_lambda_function.update_images_json.arn
     events              = ["s3:ObjectCreated:*", "s3:ObjectRemoved:*"]
-    # 画像(.png)のアップロード/削除のみトリガー。images.json(.json)の書き戻しでは発火させず自己再帰を防ぐ
     filter_suffix       = ".png"
+  }
+  lambda_function {
+    lambda_function_arn = aws_lambda_function.update_images_json.arn
+    events              = ["s3:ObjectCreated:*", "s3:ObjectRemoved:*"]
+    filter_suffix       = ".jpg"
+  }
+  lambda_function {
+    lambda_function_arn = aws_lambda_function.update_images_json.arn
+    events              = ["s3:ObjectCreated:*", "s3:ObjectRemoved:*"]
+    filter_suffix       = ".jpeg"
+  }
+  lambda_function {
+    lambda_function_arn = aws_lambda_function.update_images_json.arn
+    events              = ["s3:ObjectCreated:*", "s3:ObjectRemoved:*"]
+    filter_suffix       = ".gif"
+  }
+  lambda_function {
+    lambda_function_arn = aws_lambda_function.update_images_json.arn
+    events              = ["s3:ObjectCreated:*", "s3:ObjectRemoved:*"]
+    filter_suffix       = ".webp"
   }
 
   depends_on = [aws_lambda_permission.s3_invoke_update_lambda]
@@ -181,7 +203,7 @@ resource "aws_cloudfront_response_headers_policy" "cors" {
     }
 
     access_control_max_age_sec = 600
-    origin_override           = true
+    origin_override            = true
   }
 }
 
@@ -233,7 +255,7 @@ resource "aws_cloudfront_distribution" "main" {
 # IAM ROLES
 # =====================================================================================
 resource "aws_iam_role" "upload_lambda_execution" {
-  name = "WIPUploader-UploadLambdaExecutionRole-pepPv9zSfzBh"  # Preserve CloudFormation name
+  name = "WIPUploader-UploadLambdaExecutionRole-pepPv9zSfzBh" # Preserve CloudFormation name
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -322,7 +344,7 @@ resource "aws_iam_role" "authorizer_lambda_execution" {
 }
 
 resource "aws_iam_role" "update_lambda_execution" {
-  name = "WIPUploader-UpdateImagesJsonLambdaExecutionRole-MhwPNOwZDB5j"  # Preserve CloudFormation name
+  name = "WIPUploader-UpdateImagesJsonLambdaExecutionRole-MhwPNOwZDB5j" # Preserve CloudFormation name
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -425,8 +447,8 @@ resource "aws_iam_role" "enrich_lambda_execution" {
           ]
         },
         {
-          Effect = "Allow"
-          Action = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+          Effect   = "Allow"
+          Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
           Resource = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.stack_name}-ImageEnrichFunction:*"
         }
       ]
@@ -440,20 +462,20 @@ resource "aws_iam_role" "enrich_lambda_execution" {
 # LAMBDA FUNCTIONS
 # =====================================================================================
 resource "aws_lambda_function" "upload" {
-  function_name = "WIPUploader-UploadFunction-hJDSjvqD9eM7"  # Preserve CloudFormation name
+  function_name = "WIPUploader-UploadFunction-hJDSjvqD9eM7" # Preserve CloudFormation name
   handler       = "index.handler"
-  role         = aws_iam_role.upload_lambda_execution.arn
-  runtime      = "nodejs22.x"
-  timeout      = 10
+  role          = aws_iam_role.upload_lambda_execution.arn
+  runtime       = "nodejs22.x"
+  timeout       = 10
 
   filename         = data.archive_file.upload_lambda.output_path
   source_code_hash = data.archive_file.upload_lambda.output_base64sha256
 
   environment {
     variables = {
-      BUCKET_NAME      = aws_s3_bucket.image_bucket.id
-      CLOUDFRONT_DOMAIN = aws_cloudfront_distribution.main.domain_name
-      METADATA_TABLE    = aws_dynamodb_table.image_metadata.name
+      BUCKET_NAME          = aws_s3_bucket.image_bucket.id
+      CLOUDFRONT_DOMAIN    = aws_cloudfront_distribution.main.domain_name
+      METADATA_TABLE       = aws_dynamodb_table.image_metadata.name
       ENRICH_FUNCTION_NAME = aws_lambda_function.image_enrich.function_name
     }
   }
@@ -489,10 +511,10 @@ resource "aws_lambda_function" "image_enrich" {
 }
 
 resource "aws_lambda_function" "authorizer" {
-  function_name = "WIPUploader-AuthorizerFunction-7WKXvtdhJ2Lx"  # Preserve CloudFormation name
+  function_name = "WIPUploader-AuthorizerFunction-7WKXvtdhJ2Lx" # Preserve CloudFormation name
   handler       = "index.handler"
-  role         = aws_iam_role.authorizer_lambda_execution.arn
-  runtime      = "nodejs22.x"
+  role          = aws_iam_role.authorizer_lambda_execution.arn
+  runtime       = "nodejs22.x"
 
   filename         = data.archive_file.authorizer_lambda.output_path
   source_code_hash = data.archive_file.authorizer_lambda.output_base64sha256
@@ -508,18 +530,18 @@ resource "aws_lambda_function" "authorizer" {
 }
 
 resource "aws_lambda_function" "update_images_json" {
-  function_name = "WIPUploaderUpdateImagesJsonFunction"  # Preserve CloudFormation name
+  function_name = "WIPUploaderUpdateImagesJsonFunction" # Preserve CloudFormation name
   handler       = "index.handler"
-  role         = aws_iam_role.update_lambda_execution.arn
-  runtime      = "nodejs22.x"
-  timeout      = 300
+  role          = aws_iam_role.update_lambda_execution.arn
+  runtime       = "nodejs22.x"
+  timeout       = 300
 
   filename         = data.archive_file.update_images_lambda.output_path
   source_code_hash = data.archive_file.update_images_lambda.output_base64sha256
 
   environment {
     variables = {
-      IMAGE_BUCKET               = var.image_bucket_name
+      IMAGE_BUCKET              = var.image_bucket_name
       DISTRIBUTION_ID           = var.cloudfront_distribution_id
       IMAGES_JSON_FILENAME_PATH = var.images_json_filename_path
       METADATA_TABLE            = aws_dynamodb_table.image_metadata.name
@@ -743,15 +765,15 @@ resource "aws_lambda_permission" "api_gateway_invoke_authorizer" {
   function_name = aws_lambda_function.authorizer.function_name
   principal     = "apigateway.amazonaws.com"
   # #18: 同一アカウントの任意APIから呼べないよう、このAPIのこのauthorizerに限定
-  source_arn    = "${aws_api_gateway_rest_api.main.execution_arn}/authorizers/${aws_api_gateway_authorizer.basic_auth.id}"
+  source_arn = "${aws_api_gateway_rest_api.main.execution_arn}/authorizers/${aws_api_gateway_authorizer.basic_auth.id}"
 }
 
 resource "aws_lambda_permission" "s3_invoke_update_lambda" {
-  statement_id  = "AllowExecutionFromS3Bucket"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.update_images_json.function_name
-  principal     = "s3.amazonaws.com"
-  source_arn    = aws_s3_bucket.image_bucket.arn
+  statement_id   = "AllowExecutionFromS3Bucket"
+  action         = "lambda:InvokeFunction"
+  function_name  = aws_lambda_function.update_images_json.function_name
+  principal      = "s3.amazonaws.com"
+  source_arn     = aws_s3_bucket.image_bucket.arn
   source_account = data.aws_caller_identity.current.account_id
 }
 
@@ -1160,9 +1182,9 @@ resource "aws_lambda_function" "memos" {
 
   environment {
     variables = {
-      METADATA_TABLE          = aws_dynamodb_table.image_metadata.name
-      ALLOWED_ORIGIN          = var.admin_allowed_origin
-      UPDATE_IMAGES_FUNCTION  = aws_lambda_function.update_images_json.function_name
+      METADATA_TABLE         = aws_dynamodb_table.image_metadata.name
+      ALLOWED_ORIGIN         = var.admin_allowed_origin
+      UPDATE_IMAGES_FUNCTION = aws_lambda_function.update_images_json.function_name
     }
   }
 
