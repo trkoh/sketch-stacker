@@ -5,6 +5,26 @@ const s3Client = new S3Client({ region: process.env.AWS_DEFAULT_REGION });
 const ddb = new DynamoDBClient({ region: process.env.AWS_DEFAULT_REGION });
 const lambda = new LambdaClient({ region: process.env.AWS_DEFAULT_REGION });
 
+// アップロード可能な画像形式をマジックバイトで判定する。
+// #20 の「中身が本当に画像か」を担保しつつ、PNG に加え iPhone 由来の JPEG など
+// 下流(enrich #39・ギャラリー表示)が既に対応する形式も受理する。
+// 未知/非画像は null（拒否）。ext と MIME を返し、正しい拡張子・Content-Type で保存する。
+function detectImageType(buf) {
+  if (buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return { ext: 'png', mime: 'image/png' };
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return { ext: 'jpg', mime: 'image/jpeg' };
+  if (buf.length >= 4 && buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x38) return { ext: 'gif', mime: 'image/gif' };
+  if (buf.length >= 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') return { ext: 'webp', mime: 'image/webp' };
+  return null;
+}
+
+// HEIC/HEIF（iPhone 標準フォーマット）は Bedrock もブラウザも表示不可のため受理しない。
+// 「PNGではない」という不親切なエラーではなく具体的な対処を返すために別途判定する。
+function isHeic(buf) {
+  if (buf.length < 12 || buf.toString('ascii', 4, 8) !== 'ftyp') return false;
+  const brand = buf.toString('ascii', 8, 12);
+  return ['heic', 'heix', 'hevc', 'heim', 'heis', 'hevm', 'hevs', 'mif1', 'msf1'].includes(brand);
+}
+
 exports.handler = async (event) => {
   try {
     const body = JSON.parse(event.body);
@@ -30,23 +50,28 @@ exports.handler = async (event) => {
       };
     }
 
-    // #20: PNGマジックバイト(89 50 4E 47 0D 0A 1A 0A)を検証し、中身がPNG以外の保存を拒否
-    const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-    if (imageData.length < 8 || !imageData.subarray(0, 8).equals(PNG_SIGNATURE)) {
+    // #20 の意図(中身が本当に画像か)を維持しつつ、対応形式を PNG/JPEG/GIF/WebP に拡張。
+    // マジックバイトで判定し、未知形式は拒否。HEIC は具体的な対処を促す。
+    const imageType = detectImageType(imageData);
+    if (!imageType) {
       return {
         statusCode: 400,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: 'Uploaded data is not a valid PNG image' })
+        body: JSON.stringify({
+          error: isHeic(imageData)
+            ? 'HEIC/HEIF は非対応です。iPhone の「設定 > カメラ > フォーマット」を「互換性優先」にする（JPEGで撮影）か、JPEG/PNG に変換してアップロードしてください。'
+            : 'Unsupported image format. PNG / JPEG / GIF / WebP のみ対応しています。'
+        })
       };
     }
 
-    const key = `${Date.now()}.png`;
+    const key = `${Date.now()}.${imageType.ext}`;
 
     const command = new PutObjectCommand({
       Bucket: process.env.BUCKET_NAME,
       Key: key,
       Body: imageData,
-      ContentType: 'image/png',
+      ContentType: imageType.mime,
       StorageClass: 'GLACIER_IR'
     });
 
