@@ -29,7 +29,11 @@ resource "aws_secretsmanager_secret" "basic_auth_password" {
 }
 
 # Secret value managed externally via AWS CLI for security
-# Use: aws secretsmanager put-secret-value --secret-id <arn> --secret-string '{"secret_key":"NEW_PASSWORD"}'
+# The JSON holds TWO keys (authorizer reads both — omitting one on rotation silently disables it):
+#   secret_key = upload/delete password (iOS shortcut, curl)
+#   admin_key  = admin-mode password (?admin UI: memos, search, delete)
+# Use: aws secretsmanager put-secret-value --secret-id <arn> \
+#        --secret-string '{"secret_key":"UPLOAD_PW","admin_key":"ADMIN_PW"}'
 # This prevents passwords from being stored in Terraform state or code
 
 # =====================================================================================
