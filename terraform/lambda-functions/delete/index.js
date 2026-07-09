@@ -13,8 +13,10 @@ exports.handler = async (event) => {
   const rawKey = event.pathParameters && event.pathParameters.key;
   const key = rawKey ? decodeURIComponent(rawKey) : '';
 
-  // 安全策: ルート直下の画像(.png)のみ削除可。viewer/images.json やフォルダは対象外
-  if (!key || key.includes('/') || !key.endsWith('.png')) {
+  // 安全策: ルート直下の画像のみ削除可。viewer/images.json やフォルダは対象外。
+  // 拡張子は upload(#46)が受理する形式に揃える(png/jpg/jpeg/gif/webp)。
+  // .png 決め打ちだと JPEG 画像が削除できない。
+  if (!key || key.includes('/') || !/\.(png|jpe?g|gif|webp)$/i.test(key)) {
     return {
       statusCode: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

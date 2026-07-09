@@ -30,8 +30,10 @@ exports.handler = async (event) => {
 
   const rawKey = event.pathParameters && event.pathParameters.key;
   const key = rawKey ? decodeURIComponent(rawKey) : '';
-  // 安全策: ルート直下の画像(.png)のみ対象。viewer/配下やフォルダは対象外。
-  if (!key || key.includes('/') || !key.endsWith('.png')) {
+  // 安全策: ルート直下の画像のみ対象。viewer/配下やフォルダは対象外。
+  // 拡張子は upload(#46)が受理する形式に揃える(png/jpg/jpeg/gif/webp)。
+  // .png 決め打ちだと JPEG 画像のメモ取得/保存が 400 で弾かれる。
+  if (!key || key.includes('/') || !/\.(png|jpe?g|gif|webp)$/i.test(key)) {
     return respond(400, { error: 'Invalid image key' });
   }
 
