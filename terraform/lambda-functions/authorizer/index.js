@@ -3,7 +3,10 @@ const { SecretsManagerClient, GetSecretValueCommand } = require('@aws-sdk/client
 const sm = new SecretsManagerClient({ region: process.env.AWS_DEFAULT_REGION });
 let cachedSecret = null;
 
-// Secrets Managerから認証情報を取得（キャッシュ付き）
+// Secrets Managerから認証情報を取得（キャッシュ付き）。
+// secret_key   = アップロード用パスワード（iOSショートカット/curl が使用）
+// admin_key    = 管理モード用パスワード（?admin UI: メモ編集・意味検索・削除）
+// 2キー構成のため、ローテーション時は必ず両キーを含むJSONで put-secret-value すること。
 async function getSecret() {
   if (cachedSecret) {
     return cachedSecret;
@@ -19,7 +22,8 @@ async function getSecret() {
 
     cachedSecret = {
       username: process.env.AUTH_USERNAME,
-      password: secret.secret_key
+      uploadPassword: secret.secret_key,
+      adminPassword: secret.admin_key
     };
 
     return cachedSecret;
@@ -38,19 +42,19 @@ exports.handler = async (event) => {
 
   if (!authHeader) {
     console.log('No authorization header found');
-    return generatePolicy('user', 'Deny', event.methodArn);
+    return generatePolicy('user', 'Deny', [event.methodArn]);
   }
 
   if (!authHeader.startsWith('Basic ')) {
     console.log('Authorization header is not Basic auth');
-    return generatePolicy('user', 'Deny', event.methodArn);
+    return generatePolicy('user', 'Deny', [event.methodArn]);
   }
 
   try {
     const encodedCreds = authHeader.split(' ')[1];
     if (!encodedCreds) {
       console.log('No encoded credentials found');
-      return generatePolicy('user', 'Deny', event.methodArn);
+      return generatePolicy('user', 'Deny', [event.methodArn]);
     }
 
     const plainCreds = Buffer.from(encodedCreds, 'base64').toString().split(':');
@@ -60,23 +64,46 @@ exports.handler = async (event) => {
     // Secrets Managerから認証情報を動的取得
     const credentials = await getSecret();
 
-    if (username === credentials.username && password === credentials.password) {
-      console.log('Authentication successful');
-      // 認証結果はトークン単位でキャッシュされるため、API全体(stage配下)をワイルドカード許可し、
-      // upload と delete など複数メソッドで同じキャッシュを使い回せるようにする
-      const apiWildcardArn = event.methodArn.split('/').slice(0, 2).join('/') + '/*';
-      return generatePolicy('user', 'Allow', apiWildcardArn);
+    if (username !== credentials.username) {
+      console.log('Authentication failed');
+      return generatePolicy('user', 'Deny', [event.methodArn]);
+    }
+
+    // 認証結果は Authorization ヘッダ単位でキャッシュ(TTL300s)されるため、
+    // パスワードごとに許可範囲の異なるポリシーを返しても正しく分離される。
+    // stage までの共通プレフィックス: arn:...:apiId/stage
+    const stageArn = event.methodArn.split('/').slice(0, 2).join('/');
+
+    // アップロード用パスワード: 従来どおり upload/delete（ショートカット・既存curl互換）。
+    // 管理系(メモ・検索)は許可しない。
+    if (password === credentials.uploadPassword) {
+      console.log('Authentication successful (upload credential)');
+      return generatePolicy('uploader', 'Allow', [
+        `${stageArn}/POST/upload`,
+        `${stageArn}/DELETE/images/*`,
+      ]);
+    }
+
+    // 管理モード用パスワード: ?admin UI が使うメモ編集・意味検索・削除のみ。
+    if (credentials.adminPassword && password === credentials.adminPassword) {
+      console.log('Authentication successful (admin credential)');
+      return generatePolicy('admin', 'Allow', [
+        `${stageArn}/GET/memos/*`,
+        `${stageArn}/PUT/memos/*`,
+        `${stageArn}/POST/search`,
+        `${stageArn}/DELETE/images/*`,
+      ]);
     }
 
     console.log('Authentication failed');
-    return generatePolicy('user', 'Deny', event.methodArn);
+    return generatePolicy('user', 'Deny', [event.methodArn]);
   } catch (error) {
     console.error('Error processing authorization:', error);
-    return generatePolicy('user', 'Deny', event.methodArn);
+    return generatePolicy('user', 'Deny', [event.methodArn]);
   }
 };
 
-const generatePolicy = (principalId, effect, resource) => {
+const generatePolicy = (principalId, effect, resources) => {
   return {
     principalId: principalId,
     policyDocument: {
@@ -84,7 +111,7 @@ const generatePolicy = (principalId, effect, resource) => {
       Statement: [{
         Action: 'execute-api:Invoke',
         Effect: effect,
-        Resource: resource
+        Resource: resources
       }]
     }
   };
