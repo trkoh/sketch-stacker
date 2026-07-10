@@ -88,6 +88,9 @@ exports.handler = async (event) => {
     if (credentials.adminPassword && password === credentials.adminPassword) {
       console.log('Authentication successful (admin credential)');
       return generatePolicy('admin', 'Allow', [
+        // 注意: IAM のワイルドカード memos/* は /memos 自体にはマッチしないため、
+        // 一覧(GET /memos)は別エントリとして明示する。
+        `${stageArn}/GET/memos`,
         `${stageArn}/GET/memos/*`,
         `${stageArn}/PUT/memos/*`,
         `${stageArn}/POST/search`,

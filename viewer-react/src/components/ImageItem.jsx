@@ -1,4 +1,4 @@
-const ImageItem = ({ imageName, baseUrl, onImageClick, adminMode, onDelete, onMemoEdit }) => {
+const ImageItem = ({ imageName, baseUrl, onImageClick, adminMode, onDelete, onMemoEdit, memoInfo }) => {
   const extractTimestamp = (name) => {
     const m = name.match(/(\d{10,13})(?=\.[A-Za-z]+$)/);
     if (!m) return null;
@@ -33,7 +33,7 @@ const ImageItem = ({ imageName, baseUrl, onImageClick, adminMode, onDelete, onMe
   };
 
   const handleImageClick = () => {
-    onImageClick(getImageUrl());
+    onImageClick(getImageUrl(), imageName);
   };
 
   const handleDeleteClick = (e) => {
@@ -94,6 +94,14 @@ const ImageItem = ({ imageName, baseUrl, onImageClick, adminMode, onDelete, onMe
       >
         Copy
       </button>
+
+      {/* メモの常時表示（全文）。非公開メモは管理モード時のみ渡ってくる */}
+      {memoInfo && memoInfo.memo && (
+        <div className="memo-preview" onClick={handleImageClick}>
+          {memoInfo.visibility === 'private' && <span className="memo-lock" title="非公開メモ">🔒</span>}
+          {memoInfo.memo}
+        </div>
+      )}
 
       {timestamp && (
         <span className="date-label">

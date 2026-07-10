@@ -681,6 +681,10 @@ resource "aws_api_gateway_deployment" "main" {
       aws_api_gateway_integration.search_options.id,
       aws_api_gateway_resource.memos.id,
       aws_api_gateway_resource.memo_key.id,
+      aws_api_gateway_method.memos_list_get.id,
+      aws_api_gateway_integration.memos_list_get.id,
+      aws_api_gateway_method.memos_list_options.id,
+      aws_api_gateway_integration.memos_list_options.id,
       aws_api_gateway_method.memo_get.id,
       aws_api_gateway_integration.memo_get.id,
       aws_api_gateway_method.memo_put.id,
@@ -1152,8 +1156,9 @@ resource "aws_iam_role" "memos_lambda_execution" {
       Version = "2012-10-17"
       Statement = [
         {
+          # Scan は GET /memos（一覧・管理モードのタイル常時表示）用
           Effect   = "Allow"
-          Action   = ["dynamodb:GetItem", "dynamodb:UpdateItem"]
+          Action   = ["dynamodb:GetItem", "dynamodb:UpdateItem", "dynamodb:Scan"]
           Resource = aws_dynamodb_table.image_metadata.arn
         },
         {
@@ -1207,6 +1212,72 @@ resource "aws_api_gateway_resource" "memo_key" {
   parent_id   = aws_api_gateway_resource.memos.id
   path_part   = "{key}"
   rest_api_id = aws_api_gateway_rest_api.main.id
+}
+
+# GET /memos （一覧。Basic認証=既存authorizer再利用。管理モードのタイル常時表示用の一括取得。
+# authorizer は管理パスワードにのみ GET/memos を許可する）
+resource "aws_api_gateway_method" "memos_list_get" {
+  http_method   = "GET"
+  resource_id   = aws_api_gateway_resource.memos.id
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  authorization = "CUSTOM"
+  authorizer_id = aws_api_gateway_authorizer.basic_auth.id
+}
+
+resource "aws_api_gateway_integration" "memos_list_get" {
+  http_method             = aws_api_gateway_method.memos_list_get.http_method
+  resource_id             = aws_api_gateway_resource.memos.id
+  rest_api_id             = aws_api_gateway_rest_api.main.id
+  type                    = "AWS_PROXY"
+  integration_http_method = "POST"
+  uri                     = "arn:aws:apigateway:${data.aws_region.current.name}:lambda:path/2015-03-31/functions/${aws_lambda_function.memos.arn}/invocations"
+}
+
+# OPTIONS /memos （ブラウザのCORSプリフライト。Authorization付きGETはプリフライトが飛ぶため必須）
+resource "aws_api_gateway_method" "memos_list_options" {
+  http_method   = "OPTIONS"
+  resource_id   = aws_api_gateway_resource.memos.id
+  rest_api_id   = aws_api_gateway_rest_api.main.id
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "memos_list_options" {
+  http_method = aws_api_gateway_method.memos_list_options.http_method
+  resource_id = aws_api_gateway_resource.memos.id
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  type        = "MOCK"
+
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "memos_list_options" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.memos.id
+  http_method = aws_api_gateway_method.memos_list_options.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+
+resource "aws_api_gateway_integration_response" "memos_list_options" {
+  rest_api_id = aws_api_gateway_rest_api.main.id
+  resource_id = aws_api_gateway_resource.memos.id
+  http_method = aws_api_gateway_method.memos_list_options.http_method
+  status_code = aws_api_gateway_method_response.memos_list_options.status_code
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Authorization,Content-Type'"
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'${var.admin_allowed_origin}'"
+  }
+
+  depends_on = [aws_api_gateway_integration.memos_list_options]
 }
 
 # GET /memos/{key} （Basic認証=既存authorizer再利用。非公開メモも認証済みなら返す）
