@@ -9,10 +9,15 @@ const ImageGallery = () => {
   const [visibleCount, setVisibleCount] = useState(20);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalImageUrl, setModalImageUrl] = useState('');
+  const [modalImageName, setModalImageName] = useState(''); // モーダルでメモを引くためのキー
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   // U3a タグ絞り込み: metadata.json(U1射影) の autoTags を imageId->tags で保持。
   const [tagsById, setTagsById] = useState({});
+  // メモ常時表示: 公開メモは metadata.json から（誰でも見える）。
+  // 管理モード中は GET /memos（認証付き一括）で非公開含む全メモに置き換える。
+  const [publicMemos, setPublicMemos] = useState({});   // imageId -> {memo, visibility:'public'}
+  const [adminMemos, setAdminMemos] = useState(null);   // null=未取得（非管理時）
   const [selectedTags, setSelectedTags] = useState([]); // AND 絞り込み（選択タグを全て含む画像のみ）
   // 管理モード: 認証情報はメモリ上のみ保持（localStorageには残さない＝再読込で消える）
   const [admin, setAdmin] = useState(null);
@@ -50,6 +55,29 @@ const ImageGallery = () => {
     setVisibleCount(INITIAL_COUNT);
   }, [selectedTags]);
 
+  // 管理モード有効化で全メモ（非公開含む）を一括取得しタイルに常時表示。解除で公開分のみに戻す。
+  useEffect(() => {
+    if (!admin) { setAdminMemos(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/memos`, {
+          headers: { 'Authorization': 'Basic ' + btoa(`${admin.username}:${admin.password}`) },
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const map = {};
+        for (const m of (data && Array.isArray(data.memos)) ? data.memos : []) {
+          if (m && m.imageId && m.memo) map[m.imageId] = { memo: m.memo, visibility: m.visibility || 'private' };
+        }
+        if (!cancelled) setAdminMemos(map);
+      } catch (e) {
+        console.warn('メモ一覧の取得に失敗（公開メモのみ表示で継続）', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [admin]);
+
   const fetchImages = async () => {
     try {
       setLoading(true);
@@ -74,12 +102,19 @@ const ImageGallery = () => {
         try {
           const meta = await metaRes.json();
           const map = {};
+          const memoMap = {};
           for (const m of Array.isArray(meta) ? meta : []) {
-            if (m && m.imageId && Array.isArray(m.autoTags) && m.autoTags.length) {
+            if (!m || !m.imageId) continue;
+            if (Array.isArray(m.autoTags) && m.autoTags.length) {
               map[m.imageId] = m.autoTags;
+            }
+            // metadata.json の memo は公開分のみ射影されている（非公開は null）
+            if (typeof m.memo === 'string' && m.memo) {
+              memoMap[m.imageId] = { memo: m.memo, visibility: 'public' };
             }
           }
           setTagsById(map);
+          setPublicMemos(memoMap);
         } catch (e) {
           console.warn('metadata.json の解析に失敗（タグ絞り込みなしで継続）', e);
         }
@@ -103,14 +138,16 @@ const ImageGallery = () => {
     setVisibleCount(c => c + INITIAL_COUNT);
   };
 
-  const handleImageClick = (imageUrl) => {
+  const handleImageClick = (imageUrl, imageName) => {
     setModalImageUrl(imageUrl);
+    setModalImageName(imageName || '');
     setModalOpen(true);
   };
 
   const handleModalClose = () => {
     setModalOpen(false);
     setModalImageUrl('');
+    setModalImageName('');
   };
 
   // 管理モードを有効化（認証情報をメモリに保持。ページを閉じれば消える）
@@ -256,6 +293,16 @@ const ImageGallery = () => {
         return;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // タイル/モーダルの常時表示へ即反映（空メモは表示から外す）
+      const savedId = memoEditor.imageId;
+      const savedMemo = memoEditor.memo;
+      const savedVis = memoEditor.visibility;
+      setAdminMemos(prev => {
+        const next = { ...(prev || {}) };
+        if (savedMemo) next[savedId] = { memo: savedMemo, visibility: savedVis };
+        else delete next[savedId];
+        return next;
+      });
       setMemoEditor(null); // 成功 → 閉じる
     } catch (err) {
       console.error('メモ保存失敗', err);
@@ -270,6 +317,9 @@ const ImageGallery = () => {
   if (error) {
     return <div>Error: {error}</div>;
   }
+
+  // メモ常時表示: 管理モード中は全メモ（一括取得済・非公開含む）、それ以外は公開メモのみ。
+  const memosById = adminMemos || publicMemos;
 
   // 選択タグ(AND)で絞り込み。選択が無ければ全件。
   const filteredImages = selectedTags.length === 0
@@ -425,6 +475,7 @@ const ImageGallery = () => {
             adminMode={!!admin}
             onDelete={handleDelete}
             onMemoEdit={openMemoEditor}
+            memoInfo={memosById[imageName]}
           />
         ))}
       </Masonry>
@@ -441,6 +492,8 @@ const ImageGallery = () => {
       <Modal
         isOpen={modalOpen}
         imageUrl={modalImageUrl}
+        memo={modalImageName && memosById[modalImageName] ? memosById[modalImageName].memo : ''}
+        isPrivate={!!(modalImageName && memosById[modalImageName] && memosById[modalImageName].visibility === 'private')}
         onClose={handleModalClose}
       />
 

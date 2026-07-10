@@ -1,9 +1,10 @@
 // U4: 振り返りメモの取得/更新 API。オーナー限定（既存 Basic 認証 authorizer 再利用=ADR-003）。
+//  - GET  /memos       : 全画像の memo 一覧（非公開含む）。管理モードのタイル常時表示用の一括取得。
 //  - GET  /memos/{key} : 1画像の memo と visibility を返す（非公開メモも認証済みなので返す）。
 //  - PUT  /memos/{key} : memo 本文と visibility(public|private) を保存。
 // 保存後は update-images を非同期invoke して公開射影 metadata.json を更新する
 // （metadata.json は visibility=public のメモだけを載せる。非公開メモは CDN に出ない=NFR-2）。
-const { DynamoDBClient, GetItemCommand, UpdateItemCommand } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBClient, GetItemCommand, UpdateItemCommand, ScanCommand } = require('@aws-sdk/client-dynamodb');
 const { LambdaClient, InvokeCommand } = require('@aws-sdk/client-lambda');
 
 const ddb = new DynamoDBClient({ region: process.env.AWS_DEFAULT_REGION });
@@ -30,13 +31,40 @@ exports.handler = async (event) => {
 
   const rawKey = event.pathParameters && event.pathParameters.key;
   const key = rawKey ? decodeURIComponent(rawKey) : '';
-  // 安全策: ルート直下の対応画像形式のみ対象。viewer/配下やフォルダは対象外。
-  // 対応拡張子は upload(#46) と揃える: png/jpg/jpeg/gif/webp
-  if (!key || key.includes('/') || !/\.(png|jpe?g|gif|webp)$/i.test(key)) {
-    return respond(400, { error: 'Invalid image key' });
-  }
 
   try {
+    // 一覧: GET /memos（キー無し）。メモが存在するレコードだけを返す（非公開含む）。
+    // 認可は API Gateway 側の authorizer が担い、管理パスワードのみ到達できる。
+    if (method === 'GET' && !rawKey) {
+      const memos = [];
+      let lastKey;
+      do {
+        const res = await ddb.send(new ScanCommand({
+          TableName: process.env.METADATA_TABLE,
+          ProjectionExpression: 'imageId, memo, visibility',
+          ExclusiveStartKey: lastKey,
+        }));
+        for (const it of res.Items || []) {
+          if (it.memo && it.memo.S) {
+            memos.push({
+              imageId: it.imageId.S,
+              memo: it.memo.S,
+              visibility: (it.visibility && it.visibility.S) || 'private',
+            });
+          }
+        }
+        lastKey = res.LastEvaluatedKey;
+      } while (lastKey);
+      return respond(200, { memos });
+    }
+
+    // 以降（個別GET/PUT）はキー必須。
+    // 安全策: ルート直下の対応画像形式のみ対象。viewer/配下やフォルダは対象外。
+    // 対応拡張子は upload(#46) と揃える: png/jpg/jpeg/gif/webp
+    if (!key || key.includes('/') || !/\.(png|jpe?g|gif|webp)$/i.test(key)) {
+      return respond(400, { error: 'Invalid image key' });
+    }
+
     if (method === 'GET') {
       const res = await ddb.send(new GetItemCommand({
         TableName: process.env.METADATA_TABLE,
