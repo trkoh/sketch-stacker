@@ -112,17 +112,13 @@ h1 {
   top: 40px;
 }
 
-/* メモ常時プレビュー（タイル下・先頭2行で省略。全文はモーダル） */
+/* メモ常時表示（タイル下・全文。マソンリーなので高さ可変でも崩れない） */
 .memo-preview {
   padding: 4px 8px 0;
   font-size: 0.72rem;
   line-height: 1.4;
   color: #555;
   text-align: left;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
   white-space: pre-wrap;
   word-break: break-word;
   cursor: pointer;

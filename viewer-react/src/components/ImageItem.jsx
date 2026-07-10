@@ -95,7 +95,7 @@ const ImageItem = ({ imageName, baseUrl, onImageClick, adminMode, onDelete, onMe
         Copy
       </button>
 
-      {/* メモの常時プレビュー（先頭2行・全文はモーダル）。非公開メモは管理モード時のみ渡ってくる */}
+      {/* メモの常時表示（全文）。非公開メモは管理モード時のみ渡ってくる */}
       {memoInfo && memoInfo.memo && (
         <div className="memo-preview" onClick={handleImageClick}>
           {memoInfo.visibility === 'private' && <span className="memo-lock" title="非公開メモ">🔒</span>}
