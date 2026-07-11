@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import ImageItem from './ImageItem';
 import Modal from './Modal';
 import ContributionCalendar from './ContributionCalendar';
+import PhotoGallery from './PhotoGallery';
 import Masonry from 'react-masonry-css';
 
 const ImageGallery = () => {
@@ -33,6 +34,8 @@ const ImageGallery = () => {
   const [embeddingsCache, setEmbeddingsCache] = useState(null);
   // U4 メモ編集（オーナー限定）: 編集対象1枚のメモ本文と公開フラグを保持する小エディタの状態。
   const [memoEditor, setMemoEditor] = useState(null); // null=閉/{imageId,memo,visibility,loading,saving,error}
+  // U-P1 リファレンス写真ビュー（管理モード限定）: 'images' | 'photos'
+  const [viewMode, setViewMode] = useState('images');
 
   // 設定
   const BASE_URL = "https://d3a21s3joww9j4.cloudfront.net/";
@@ -158,7 +161,10 @@ const ImageGallery = () => {
     setAdminForm({ open: false, username: '', password: '' });
   };
 
-  const disableAdmin = () => setAdmin(null);
+  const disableAdmin = () => {
+    setAdmin(null);
+    setViewMode('images'); // 写真は管理モード限定なので解除時に絵へ戻す
+  };
 
   // 画像を削除（Basic認証付きで DELETE API を呼ぶ）
   const handleDelete = async (imageName) => {
@@ -400,10 +406,24 @@ const ImageGallery = () => {
           <>
             <span style={{ color: '#c0392b', fontWeight: 'bold' }}>● 管理モード（削除可能）</span>
             <button style={adminBtnStyle} onClick={disableAdmin}>解除</button>
+            {/* U-P1: 絵/リファレンス写真の切替（写真は非公開・管理モード限定） */}
+            <button
+              style={{ ...adminBtnStyle, background: viewMode === 'photos' ? '#2c3e50' : '#333' }}
+              onClick={() => setViewMode(m => m === 'photos' ? 'images' : 'photos')}
+            >
+              {viewMode === 'photos' ? '絵を表示' : '写真を表示'}
+            </button>
           </>
         )}
       </div>
       )}
+
+      {/* U-P1 リファレンス写真ビュー（管理モード限定）。絵のUIとは排他表示 */}
+      {admin && viewMode === 'photos' ? (
+        <PhotoGallery admin={admin} apiBase={API_BASE} />
+      ) : (
+      <>
+
 
       {/* U3b 意味検索: オーナー限定（クエリ埋め込みAPIがBasic認証必須=ADR-005）。管理モード時のみ表示。 */}
       {admin && (
@@ -539,6 +559,8 @@ const ImageGallery = () => {
             </div>
           </div>
         </div>
+      )}
+      </>
       )}
     </>
   );
