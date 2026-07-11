@@ -2,7 +2,7 @@
 
 - Workflow: AI-DLC v1.0.0
 - Workspace: **Brownfield**（既存: React/Vite + Terraform + Lambda）
-- Phase: 🟢 CONSTRUCTION **完了**（U1〜U4 本番反映・実機検証済）→ Phase 1 機能的に完了
+- Phase: Phase 1 完了 → **Phase 2 CONSTRUCTION 進行中**（U-P1 写真基盤 実装済み・PR/apply待ち）
 - Stage: **全Unit apply済＋バックフィル完了（全600枚がタグ・検索対象）。残: PR #40 マージのみ**
 - Updated: 2026-07-01
 

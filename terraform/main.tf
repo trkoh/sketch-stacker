@@ -691,6 +691,20 @@ resource "aws_api_gateway_deployment" "main" {
       aws_api_gateway_integration.memo_put.id,
       aws_api_gateway_method.memo_options.id,
       aws_api_gateway_integration.memo_options.id,
+      aws_api_gateway_resource.photos.id,
+      aws_api_gateway_resource.photo_key.id,
+      aws_api_gateway_method.photos_post.id,
+      aws_api_gateway_integration.photos_post.id,
+      aws_api_gateway_method.photos_get.id,
+      aws_api_gateway_integration.photos_get.id,
+      aws_api_gateway_method.photos_options.id,
+      aws_api_gateway_integration.photos_options.id,
+      aws_api_gateway_method.photo_put.id,
+      aws_api_gateway_integration.photo_put.id,
+      aws_api_gateway_method.photo_delete.id,
+      aws_api_gateway_integration.photo_delete.id,
+      aws_api_gateway_method.photo_key_options.id,
+      aws_api_gateway_integration.photo_key_options.id,
       var.admin_allowed_origin, # originを変えたらプリフライト応答を再デプロイさせる
     ]))
   }

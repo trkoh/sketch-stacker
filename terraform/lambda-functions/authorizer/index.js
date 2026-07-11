@@ -74,27 +74,33 @@ exports.handler = async (event) => {
     // stage までの共通プレフィックス: arn:...:apiId/stage
     const stageArn = event.methodArn.split('/').slice(0, 2).join('/');
 
-    // アップロード用パスワード: 従来どおり upload/delete（ショートカット・既存curl互換）。
-    // 管理系(メモ・検索)は許可しない。
+    // アップロード用パスワード: 従来どおり upload/delete（ショートカット・既存curl互換）に加え、
+    // 写真アップロード(U-P1)も許可。書き込みのみで読み出し(GET /photos)は不可。
     if (password === credentials.uploadPassword) {
       console.log('Authentication successful (upload credential)');
       return generatePolicy('uploader', 'Allow', [
         `${stageArn}/POST/upload`,
+        `${stageArn}/POST/photos`,
         `${stageArn}/DELETE/images/*`,
       ]);
     }
 
-    // 管理モード用パスワード: ?admin UI が使うメモ編集・意味検索・削除のみ。
+    // 管理モード用パスワード: ?admin UI が使うメモ編集・意味検索・削除・写真管理のみ。
     if (credentials.adminPassword && password === credentials.adminPassword) {
       console.log('Authentication successful (admin credential)');
       return generatePolicy('admin', 'Allow', [
         // 注意: IAM のワイルドカード memos/* は /memos 自体にはマッチしないため、
-        // 一覧(GET /memos)は別エントリとして明示する。
+        // 一覧(GET /memos 等)は別エントリとして明示する。
         `${stageArn}/GET/memos`,
         `${stageArn}/GET/memos/*`,
         `${stageArn}/PUT/memos/*`,
         `${stageArn}/POST/search`,
         `${stageArn}/DELETE/images/*`,
+        // U-P1 写真管理（一覧/アップロード/メモ編集/削除）
+        `${stageArn}/GET/photos`,
+        `${stageArn}/POST/photos`,
+        `${stageArn}/PUT/photos/*`,
+        `${stageArn}/DELETE/photos/*`,
       ]);
     }
 

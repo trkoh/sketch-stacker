@@ -13,3 +13,10 @@
 **Context**: Construction（メモUX改善）+ Inception（Phase 2 U-P1 のADR提案）
 
 ---
+
+## Phase 2 U-P1 実装（写真基盤）
+**Timestamp**: 2026-07-10T01:30:00Z
+**User Input**: 「アップロードはappleの共有からワンタップで行える必要がある ショートカットならそれが実現できた」→（共有シート1タップを満たす4手段を調査・比較提示後）「はいおっけー」
+**AI Response**: ADR-006を裁定済みに更新（別バケット/presigned URL/POST /photos＋アップロード=iOSショートカット。根拠: PWA Share TargetはiOS未対応、S3クライアントアプリは長期AWSキー保存が鍵レス方針と矛盾、自作Share Extensionは過剰投資）。U-P1実装: photos Lambda（POST/GET/PUT/DELETE・マジックバイト検証・presigned URL 600s）、非公開バケット＋PhotoMetadataテーブル（絵と完全分離）、API GW /photos系＋CORS、authorizer許可追加（uploader=POST/photosのみ、admin=全部）、管理UIに写真ビュー（一覧・メモ編集・削除・モノクロ表示トグル）、ショートカットレシピ docs/ios-shortcut-photos.md。
+**Context**: Construction（U-P1）。lint 0 errors・build成功。
+---
