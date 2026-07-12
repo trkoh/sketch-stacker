@@ -4,13 +4,14 @@ import Modal from './Modal';
 
 // U-P1: リファレンス写真ビュー（管理モード限定）。
 // GET /photos（Basic認証）で一覧＋期限付き presigned URL を取得して表示する。
-// 写真は常に非公開（公開CDNには存在しない）。撮影メモの編集・削除・モノクロ表示（バリュー確認の
-// 最小導線 = check-value 思想）を備える。
+// 写真は常に非公開（公開CDNには存在しない）。撮影メモの編集・削除に加え、
+// バリュー確認は自作 check-value-app に presigned URL を ?img= で渡して別タブで開く。
+const CHECK_VALUE_APP = 'https://odayakalife.dev/check-value-app/';
+
 const PhotoGallery = ({ admin, apiBase }) => {
   const [photos, setPhotos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [mono, setMono] = useState(false); // モノクロ表示（バリュー確認用）
   const [modal, setModal] = useState(null); // {url, memo}
   const [memoEditor, setMemoEditor] = useState(null); // {photoId, memo, saving, error}
 
@@ -88,9 +89,6 @@ const PhotoGallery = ({ admin, apiBase }) => {
         <span style={{ fontSize: '0.9rem', color: '#666' }}>
           リファレンス写真（非公開・{photos.length}枚）
         </span>
-        <button style={{ ...btnStyle, background: mono ? '#2c3e50' : '#888' }} onClick={() => setMono(m => !m)}>
-          {mono ? 'カラーに戻す' : 'モノクロ表示（バリュー確認）'}
-        </button>
         <button style={btnStyle} onClick={fetchPhotos}>再読込</button>
       </div>
 
@@ -109,7 +107,6 @@ const PhotoGallery = ({ admin, apiBase }) => {
               src={p.url}
               alt={p.photoId}
               loading="lazy"
-              style={mono ? { filter: 'grayscale(1)' } : undefined}
               onClick={() => setModal({ url: p.url, memo: p.memo })}
             />
             <button
@@ -125,6 +122,14 @@ const PhotoGallery = ({ admin, apiBase }) => {
               style={{ position: 'absolute', top: 4, left: 54, background: '#2c3e50', color: '#fff', zIndex: 2, opacity: 1, visibility: 'visible' }}
             >
               メモ
+            </button>
+            <button
+              className="ctrl-btn"
+              onClick={() => window.open(`${CHECK_VALUE_APP}?img=${encodeURIComponent(p.url)}`, '_blank', 'noopener')}
+              title="check-value-app でバリュー確認（グレースケール/Notan/ポスタリゼーション）"
+              style={{ position: 'absolute', top: 4, left: 104, background: '#7d3c98', color: '#fff', zIndex: 2, opacity: 1, visibility: 'visible' }}
+            >
+              Value
             </button>
             {p.memo && (
               <div className="memo-preview" onClick={() => setModal({ url: p.url, memo: p.memo })}>

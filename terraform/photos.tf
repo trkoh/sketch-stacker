@@ -39,6 +39,23 @@ resource "aws_s3_bucket_versioning" "photo_bucket" {
   }
 }
 
+# check-value-app（別オリジン）が presigned URL の写真を crossOrigin で読み込むための CORS。
+# 認可は presigned URL の署名が担う（CORSは「どのオリジンのJSが読めるか」の制御であり公開ではない）。
+resource "aws_s3_bucket_cors_configuration" "photo_bucket" {
+  bucket = aws_s3_bucket.photo_bucket.id
+
+  cors_rule {
+    allowed_methods = ["GET", "HEAD"]
+    allowed_origins = [
+      "https://odayakalife.dev",  # check-value-app / 管理ギャラリー
+      "https://trkoh.github.io",  # 旧管理ギャラリー
+      "http://localhost:*",       # ローカル開発
+    ]
+    allowed_headers = ["*"]
+    max_age_seconds = 600
+  }
+}
+
 resource "aws_s3_bucket_lifecycle_configuration" "photo_bucket" {
   bucket = aws_s3_bucket.photo_bucket.id
 
