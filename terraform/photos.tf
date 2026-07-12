@@ -148,6 +148,18 @@ resource "aws_iam_role" "photos_lambda_execution" {
           Resource = aws_dynamodb_table.photo_metadata.arn
         },
         {
+          # U-P2: 絵↔写真リンクの相互保存で絵側 refPhotos を更新する
+          Effect   = "Allow"
+          Action   = ["dynamodb:UpdateItem"]
+          Resource = aws_dynamodb_table.image_metadata.arn
+        },
+        {
+          # U-P2: アップロード後に enrich(写真モード)を非同期invoke して埋め込み生成
+          Effect   = "Allow"
+          Action   = ["lambda:InvokeFunction"]
+          Resource = aws_lambda_function.image_enrich.arn
+        },
+        {
           Effect   = "Allow"
           Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
           Resource = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.stack_name}-PhotosFunction:*"
@@ -172,9 +184,11 @@ resource "aws_lambda_function" "photos" {
 
   environment {
     variables = {
-      PHOTO_BUCKET   = aws_s3_bucket.photo_bucket.id
-      PHOTO_TABLE    = aws_dynamodb_table.photo_metadata.name
-      ALLOWED_ORIGIN = var.admin_allowed_origin
+      PHOTO_BUCKET         = aws_s3_bucket.photo_bucket.id
+      PHOTO_TABLE          = aws_dynamodb_table.photo_metadata.name
+      ALLOWED_ORIGIN       = var.admin_allowed_origin
+      IMAGE_METADATA_TABLE = aws_dynamodb_table.image_metadata.name         # U-P2 リンク相互保存
+      ENRICH_FUNCTION_NAME = aws_lambda_function.image_enrich.function_name # U-P2 埋め込み生成
     }
   }
 

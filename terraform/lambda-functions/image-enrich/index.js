@@ -155,6 +155,9 @@ async function generateTags(b64, format) {
 /**
  * 1枚の画像を処理してメタデータを更新する。upload非同期invoke / バックフィル共通のエントリ。
  * イベント形は { imageId: "<timestamp>.png" } を想定。
+ * U-P2: { imageId, kind: "photo" } の場合はリファレンス写真モード —
+ * 写真バケット/写真テーブルを対象に「埋め込みのみ」生成する（タグは写真には不要。
+ * 埋め込みは絵↔写真の類似サジェスト用で、公開射影には一切出ない）。
  */
 exports.handler = async (event) => {
   const imageId = event && event.imageId;
@@ -162,14 +165,21 @@ exports.handler = async (event) => {
     console.error('imageId missing in event:', JSON.stringify(event));
     return { ok: false, error: 'imageId required' };
   }
+  const isPhoto = event.kind === 'photo';
+  const bucket = isPhoto ? process.env.PHOTO_BUCKET : process.env.IMAGE_BUCKET;
+  const table = isPhoto ? process.env.PHOTO_TABLE : process.env.METADATA_TABLE;
+  const keyAttr = isPhoto ? 'photoId' : 'imageId';
 
-  const bytes = await getImageBytes(process.env.IMAGE_BUCKET, imageId);
+  const bytes = await getImageBytes(bucket, imageId);
   const b64 = bytes.toString('base64');
   // 拡張子が .png でも中身が JPEG 等のことがあるので実バイトで形式判定して Bedrock に渡す。
   const format = detectImageFormat(bytes);
 
-  // 埋め込みとタグは独立なので並列化(片方失敗でも他方は活かす)。
-  const [embedResult, tagResult] = await Promise.allSettled([embedImage(b64, format), generateTags(b64, format)]);
+  // 埋め込みとタグは独立なので並列化(片方失敗でも他方は活かす)。写真はタグ不要のためスキップ。
+  const [embedResult, tagResult] = await Promise.allSettled([
+    embedImage(b64, format),
+    isPhoto ? Promise.resolve([]) : generateTags(b64, format),
+  ]);
 
   const exprNames = {};
   const exprValues = {};
@@ -202,8 +212,8 @@ exports.handler = async (event) => {
   setClauses.push('#ea = :ea');
 
   await ddb.send(new UpdateItemCommand({
-    TableName: process.env.METADATA_TABLE,
-    Key: { imageId: { S: imageId } },
+    TableName: table,
+    Key: { [keyAttr]: { S: imageId } },
     UpdateExpression: 'SET ' + setClauses.join(', '),
     ExpressionAttributeNames: exprNames,
     ExpressionAttributeValues: exprValues,

@@ -158,3 +158,14 @@ iOS Shortcut(写真用) → POST /photos (Basic認証)
 - 保存=別バケット / 配信=presigned URL / エンドポイント=新設 `/photos` を採用。
 - **アップロード経路の追加裁定**: オーナー要件「Appleの共有シートから1タップ」が確定。共有シート統合の全手段を調査した結果 **iOSショートカット** を採用（PWA Web Share TargetはiOS未対応 [WebKit#194593]、サードパーティS3アプリは長期AWSキーを他社アプリに置く必要があり鍵レス方針(#42)と矛盾、自作Share Extensionは$99/年+開発保守が単一ユーザーに過剰）。
 - 画像はショートカット側で長辺2048pxへリサイズ（API GW 10MB制限対策。原寸はiCloud写真に残存）。レシピ: `docs/ios-shortcut-photos.md`。
+
+---
+
+## ADR-007：写真↔絵の類似サジェスト＆紐づけ（Phase 2 U-P2・2026-07-12 オーナー「進めろ」指示に基づき既裁定パターン踏襲）
+
+- **埋め込み生成**: 写真アップロード時に photos Lambda が既存 enrich Lambda を**写真モード**（`{kind:'photo'}`・埋め込みのみ・タグ生成なし）で非同期invoke（U2のA案=非同期パターンの再利用。コスト $0.0001/枚）。
+- **類似計算**: **ブラウザ内コサイン総当たり**（ADR-002踏襲）。絵側ベクトル=公開 `embeddings.json`、写真側ベクトル=`GET /photos`（管理者限定）が返す。**写真の埋め込みは公開JSONに出さない**。
+- **紐づけデータモデル**: 相互保存 — 写真 `PhotoMetadata.linkedImages`(SS) ⇄ 絵 `ImageMetadata.refPhotos`(SS)。更新は `PUT /photos/{key}` の `linkImageAdd`/`linkImageRemove`（管理者限定・photos Lambda が両テーブルを更新）。
+- **公開射影の安全性**: update-images は明示フィールドのみ射影するため `refPhotos` は公開 metadata.json に出ない（写真IDも非公開扱いを維持）。
+- **UI**: 写真タイル「似た絵」→類似上位12件をパネル表示→タップで紐づけ⇄解除。写真タイルに紐づけ済みの絵サムネ、絵の拡大モーダルに紐づけ済み参照写真（管理モード時のみ）。
+- **既知の割り切り**: 写真削除時に絵側 refPhotos の後始末はしない（表示時に解決不能IDを無視）。必要になったら削除時クリーンアップを追加。

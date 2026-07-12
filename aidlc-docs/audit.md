@@ -20,3 +20,10 @@
 **AI Response**: ADR-006を裁定済みに更新（別バケット/presigned URL/POST /photos＋アップロード=iOSショートカット。根拠: PWA Share TargetはiOS未対応、S3クライアントアプリは長期AWSキー保存が鍵レス方針と矛盾、自作Share Extensionは過剰投資）。U-P1実装: photos Lambda（POST/GET/PUT/DELETE・マジックバイト検証・presigned URL 600s）、非公開バケット＋PhotoMetadataテーブル（絵と完全分離）、API GW /photos系＋CORS、authorizer許可追加（uploader=POST/photosのみ、admin=全部）、管理UIに写真ビュー（一覧・メモ編集・削除・モノクロ表示トグル）、ショートカットレシピ docs/ios-shortcut-photos.md。
 **Context**: Construction（U-P1）。lint 0 errors・build成功。
 ---
+
+## Phase 2 U-P2 実装（類似サジェスト＆紐づけ）
+**Timestamp**: 2026-07-12T03:30:00Z
+**User Input**: 「いけました / イラストとリファレンスを紐づけるという話は？ / あとヴァリュー確認のロジックが意味不明 https://odayakalife.dev/check-value-app/?paste=1 これに画像差し込んで別タブで開くということをしろ」→「52mergeした 進めろ」
+**AI Response**: ①check-value-app実コードを取得し `?img=` パラメータ対応を確認、Valueボタン＋写真バケットCORSで連携(PR #52)。②U-P2実装: enrich写真モード(埋め込みのみ)、photosアップロード時の非同期invoke、GET /photosにembedding/linkedImages、PUT /photosにlinkImageAdd/Remove(両テーブル相互保存)、GET /memosにrefPhotos、UI(似た絵サジェストパネル・紐づけトグル・写真タイルに絵サムネ・絵モーダルに参照写真)。ADR-007記録。
+**Context**: Construction（U-P2）。lint 0 errors・build成功。
+---
