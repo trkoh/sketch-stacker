@@ -10,7 +10,9 @@ const Modal = ({ isOpen, imageUrl, memo, isPrivate, refPhotoUrls = [], onClose }
   return (
     <div className={`modal ${isOpen ? 'show' : ''}`} onClick={handleBackdropClick}>
       <div className="modal-body">
-        <img src={imageUrl} alt="preview" />
+        {/* crossOrigin: 写真(presigned)のキャッシュをCORS付きで統一するため(check-value-app連携のキャッシュ汚染対策)。
+            絵(CloudFront)側もCORSポリシー設定済みなので同一指定で問題ない */}
+        <img src={imageUrl} alt="preview" crossOrigin="anonymous" />
         {/* U-P2: この絵に紐づくリファレンス写真（管理モード時のみ渡ってくる・非公開） */}
         {refPhotoUrls.length > 0 && (
           <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap', justifyContent: 'center' }}>

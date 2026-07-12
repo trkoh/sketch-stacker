@@ -168,6 +168,9 @@ const PhotoGallery = ({ admin, apiBase, baseUrl, embedUrl }) => {
               src={p.url}
               alt={p.photoId}
               loading="lazy"
+              // crossOrigin必須: これ無しで読むとCORSヘッダ無しの応答がブラウザにキャッシュされ、
+              // 後から check-value-app が同じURLを crossOrigin で読む際にキャッシュ汚染で失敗する
+              crossOrigin="anonymous"
               onClick={() => setModal({ url: p.url, memo: p.memo })}
             />
             <button
