@@ -431,14 +431,15 @@ resource "aws_iam_role" "enrich_lambda_execution" {
       Version = "2012-10-17"
       Statement = [
         {
+          # 写真バケットは U-P2 の写真モード(埋め込み生成)用
           Effect   = "Allow"
           Action   = ["s3:GetObject"]
-          Resource = "${aws_s3_bucket.image_bucket.arn}/*"
+          Resource = ["${aws_s3_bucket.image_bucket.arn}/*", "${aws_s3_bucket.photo_bucket.arn}/*"]
         },
         {
           Effect   = "Allow"
           Action   = ["dynamodb:UpdateItem"]
-          Resource = aws_dynamodb_table.image_metadata.arn
+          Resource = [aws_dynamodb_table.image_metadata.arn, aws_dynamodb_table.photo_metadata.arn]
         },
         {
           # Bedrock呼び出し。モデルIDが変数(オンデマンド/推論プロファイル両対応)のため、
@@ -508,6 +509,9 @@ resource "aws_lambda_function" "image_enrich" {
       EMBED_MODEL_ID      = var.bedrock_embed_model_id
       TAG_MODEL_ID        = var.bedrock_tag_model_id
       EMBEDDING_DIMENSION = tostring(var.embedding_dimension)
+      # U-P2: 写真モード(kind=photo)の対象。類似サジェスト用の埋め込みのみ生成する。
+      PHOTO_BUCKET = aws_s3_bucket.photo_bucket.id
+      PHOTO_TABLE  = aws_dynamodb_table.photo_metadata.name
     }
   }
 

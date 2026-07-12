@@ -36,6 +36,8 @@ const ImageGallery = () => {
   const [memoEditor, setMemoEditor] = useState(null); // null=閉/{imageId,memo,visibility,loading,saving,error}
   // U-P1 リファレンス写真ビュー（管理モード限定）: 'images' | 'photos'
   const [viewMode, setViewMode] = useState('images');
+  // U-P2: 絵モーダルに紐づく参照写真を出すための photoId -> presigned URL マップ（管理モード時に遅延取得）
+  const [photoUrlMap, setPhotoUrlMap] = useState(null);
 
   // 設定
   const BASE_URL = "https://d3a21s3joww9j4.cloudfront.net/";
@@ -71,11 +73,35 @@ const ImageGallery = () => {
         const data = await res.json();
         const map = {};
         for (const m of (data && Array.isArray(data.memos)) ? data.memos : []) {
-          if (m && m.imageId && m.memo) map[m.imageId] = { memo: m.memo, visibility: m.visibility || 'private' };
+          if (m && m.imageId && (m.memo || (m.refPhotos && m.refPhotos.length))) {
+            map[m.imageId] = { memo: m.memo || '', visibility: m.visibility || 'private', refPhotos: m.refPhotos || [] };
+          }
         }
         if (!cancelled) setAdminMemos(map);
       } catch (e) {
         console.warn('メモ一覧の取得に失敗（公開メモのみ表示で継続）', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [admin]);
+
+  // U-P2: 管理モード中、紐づき表示用に写真の presigned URL マップを一度だけ取得。
+  // （URLは10分で失効するが、絵モーダルでの表示用途では再ログイン/再読込で足りる）
+  useEffect(() => {
+    if (!admin) { setPhotoUrlMap(null); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/photos`, {
+          headers: { 'Authorization': 'Basic ' + btoa(`${admin.username}:${admin.password}`) },
+        });
+        if (!res.ok) return; // 写真表示は補助機能。失敗しても絵のUIは成立させる
+        const data = await res.json();
+        const map = {};
+        for (const p of (data && Array.isArray(data.photos)) ? data.photos : []) map[p.photoId] = p.url;
+        if (!cancelled) setPhotoUrlMap(map);
+      } catch (e) {
+        console.warn('写真URLマップの取得に失敗（絵モーダルの参照写真表示なしで継続）', e);
       }
     })();
     return () => { cancelled = true; };
@@ -420,7 +446,7 @@ const ImageGallery = () => {
 
       {/* U-P1 リファレンス写真ビュー（管理モード限定）。絵のUIとは排他表示 */}
       {admin && viewMode === 'photos' ? (
-        <PhotoGallery admin={admin} apiBase={API_BASE} />
+        <PhotoGallery admin={admin} apiBase={API_BASE} baseUrl={BASE_URL} embedUrl={EMBED_URL} />
       ) : (
       <>
 
@@ -514,6 +540,12 @@ const ImageGallery = () => {
         imageUrl={modalImageUrl}
         memo={modalImageName && memosById[modalImageName] ? memosById[modalImageName].memo : ''}
         isPrivate={!!(modalImageName && memosById[modalImageName] && memosById[modalImageName].visibility === 'private')}
+        refPhotoUrls={
+          // U-P2: この絵に紐づく参照写真（管理モード時のみ。photoUrlMap 未取得なら出さない）
+          admin && photoUrlMap && modalImageName && memosById[modalImageName]
+            ? (memosById[modalImageName].refPhotos || []).map(id => photoUrlMap[id]).filter(Boolean)
+            : []
+        }
         onClose={handleModalClose}
       />
 

@@ -41,15 +41,19 @@ exports.handler = async (event) => {
       do {
         const res = await ddb.send(new ScanCommand({
           TableName: process.env.METADATA_TABLE,
-          ProjectionExpression: 'imageId, memo, visibility',
+          // refPhotos は U-P2 の絵↔写真リンク。管理UIが絵側から参照写真を辿るために返す
+          // （このエンドポイントは管理者限定。公開射影 metadata.json には出ない）。
+          ProjectionExpression: 'imageId, memo, visibility, refPhotos',
           ExclusiveStartKey: lastKey,
         }));
         for (const it of res.Items || []) {
-          if (it.memo && it.memo.S) {
+          const refPhotos = (it.refPhotos && it.refPhotos.SS) || [];
+          if ((it.memo && it.memo.S) || refPhotos.length > 0) {
             memos.push({
               imageId: it.imageId.S,
-              memo: it.memo.S,
+              memo: (it.memo && it.memo.S) || '',
               visibility: (it.visibility && it.visibility.S) || 'private',
+              refPhotos,
             });
           }
         }
