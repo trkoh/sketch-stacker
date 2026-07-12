@@ -168,38 +168,44 @@ const PhotoGallery = ({ admin, apiBase, baseUrl, embedUrl }) => {
               src={p.url}
               alt={p.photoId}
               loading="lazy"
+              // crossOrigin必須: これ無しで読むとCORSヘッダ無しの応答がブラウザにキャッシュされ、
+              // 後から check-value-app が同じURLを crossOrigin で読む際にキャッシュ汚染で失敗する
+              crossOrigin="anonymous"
               onClick={() => setModal({ url: p.url, memo: p.memo })}
             />
-            <button
-              className="ctrl-btn"
-              onClick={() => handleDelete(p.photoId)}
-              style={{ position: 'absolute', top: 4, left: 4, background: '#c0392b', color: '#fff', zIndex: 2, opacity: 1, visibility: 'visible' }}
-            >
-              削除
-            </button>
-            <button
-              className="ctrl-btn"
-              onClick={() => setMemoEditor({ photoId: p.photoId, memo: p.memo || '', saving: false, error: null })}
-              style={{ position: 'absolute', top: 4, left: 54, background: '#2c3e50', color: '#fff', zIndex: 2, opacity: 1, visibility: 'visible' }}
-            >
-              メモ
-            </button>
-            <button
-              className="ctrl-btn"
-              onClick={() => window.open(`${CHECK_VALUE_APP}?img=${encodeURIComponent(p.url)}`, '_blank', 'noopener')}
-              title="check-value-app でバリュー確認（グレースケール/Notan/ポスタリゼーション）"
-              style={{ position: 'absolute', top: 4, left: 104, background: '#7d3c98', color: '#fff', zIndex: 2, opacity: 1, visibility: 'visible' }}
-            >
-              Value
-            </button>
-            <button
-              className="ctrl-btn"
-              onClick={() => openSuggest(p)}
-              title="この写真に視覚的に似た絵を探して紐づける"
-              style={{ position: 'absolute', top: 4, left: 158, background: '#1a5276', color: '#fff', zIndex: 2, opacity: 1, visibility: 'visible' }}
-            >
-              似た絵
-            </button>
+            {/* 操作ボタン: 固定座標だと細いタイルで重なるため、折り返すflex行に載せる */}
+            <div style={{ position: 'absolute', top: 4, left: 4, right: 4, display: 'flex', gap: 4, flexWrap: 'wrap', zIndex: 2 }}>
+              <button
+                className="ctrl-btn"
+                onClick={() => handleDelete(p.photoId)}
+                style={{ position: 'static', background: '#c0392b', color: '#fff', opacity: 1, visibility: 'visible' }}
+              >
+                削除
+              </button>
+              <button
+                className="ctrl-btn"
+                onClick={() => setMemoEditor({ photoId: p.photoId, memo: p.memo || '', saving: false, error: null })}
+                style={{ position: 'static', background: '#2c3e50', color: '#fff', opacity: 1, visibility: 'visible' }}
+              >
+                メモ
+              </button>
+              <button
+                className="ctrl-btn"
+                onClick={() => window.open(`${CHECK_VALUE_APP}?img=${encodeURIComponent(p.url)}`, '_blank', 'noopener')}
+                title="check-value-app でバリュー確認（グレースケール/Notan/ポスタリゼーション）"
+                style={{ position: 'static', background: '#7d3c98', color: '#fff', opacity: 1, visibility: 'visible' }}
+              >
+                Value
+              </button>
+              <button
+                className="ctrl-btn"
+                onClick={() => openSuggest(p)}
+                title="この写真に視覚的に似た絵を探して紐づける"
+                style={{ position: 'static', background: '#1a5276', color: '#fff', opacity: 1, visibility: 'visible' }}
+              >
+                似た絵
+              </button>
+            </div>
             {p.memo && (
               <div className="memo-preview" onClick={() => setModal({ url: p.url, memo: p.memo })}>
                 <span className="memo-lock" title="非公開">🔒</span>
