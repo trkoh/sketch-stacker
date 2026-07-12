@@ -20,11 +20,25 @@ const ImageGallery = () => {
   const [publicMemos, setPublicMemos] = useState({});   // imageId -> {memo, visibility:'public'}
   const [adminMemos, setAdminMemos] = useState(null);   // null=未取得（非管理時）
   const [selectedTags, setSelectedTags] = useState([]); // AND 絞り込み（選択タグを全て含む画像のみ）
-  // 管理モード: 認証情報はメモリ上のみ保持（localStorageには残さない＝再読込で消える）
-  const [admin, setAdmin] = useState(null);
+  // 管理モード: 認証情報はメモリ上のみ保持（localStorageには残さない＝再読込で消える）。
+  // ブックマーク用に URL フラグメント #k=ユーザー名:パスワード での自動ログインに対応。
+  // フラグメントはサーバへ送信されないため CDN/アクセスログに残らない（履歴・ブックマークには残る＝
+  // 端末を触れる人は管理モードに入れる。それを許容するかはオーナーの運用判断）。
+  const [admin, setAdmin] = useState(() => {
+    const m = window.location.hash.match(/^#k=([^:]+):(.+)$/);
+    if (!m) return null;
+    try {
+      return { username: decodeURIComponent(m[1]), password: decodeURIComponent(m[2]) };
+    } catch {
+      return { username: m[1], password: m[2] };
+    }
+  });
   const [adminForm, setAdminForm] = useState({ open: false, username: '', password: '' });
-  // 管理UIはURLに ?admin が付いている時だけ表示（一般訪問者には一切出さない）。実際のガードはAPI側のBasic認証。
-  const [adminUnlocked] = useState(() => new URLSearchParams(window.location.search).has('admin'));
+  // 管理UIはURLに ?admin か #k= が付いている時だけ表示（一般訪問者には一切出さない）。
+  // 実際のガードはAPI側のBasic認証（URLの値が間違っていれば各APIが403を返すだけ）。
+  const [adminUnlocked] = useState(() =>
+    new URLSearchParams(window.location.search).has('admin') || window.location.hash.startsWith('#k=')
+  );
   // U3b 意味検索（オーナー限定=ADR-005）: 検索語/結果/状態。結果は imageId のランキング配列（null=非検索）。
   const [searchInput, setSearchInput] = useState('');
   const [searchResults, setSearchResults] = useState(null);
