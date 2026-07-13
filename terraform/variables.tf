@@ -75,14 +75,17 @@ variable "bedrock_embed_model_id" {
 }
 
 variable "bedrock_tag_model_id" {
-  # 検証(2026-06, us-east-1 実機): Claude 3 Haiku は Legacy 化で InvokeModel 不可、
-  # Claude 3.5系は EOL、Claude 4.5系(Haiku/Sonnet)は active だがアカウントへの Anthropic
-  # 用途フォーム提出が必須。Amazon Nova Lite は提出不要で即動作・低コスト・画像入力対応のため既定に採用。
-  # Claude に切替える場合は用途フォーム提出後、us.* 推論プロファイルID
-  # (例: us.anthropic.claude-haiku-4-5-20251001-v1:0) を指定。enrich は model id 接頭辞で body 形式を分岐。
-  description = "Bedrock model id for Japanese tag generation. MUST be vision-capable. Default amazon.nova-lite-v1:0 (no Anthropic use-case form, low cost, image-capable). For Claude, submit the Anthropic use-case form and set a us.* inference-profile id."
+  # 履歴:
+  # - 2026-06 実機検証: Claude 3 Haiku=Legacy化で不可 / Claude 3.5系=EOL /
+  #   Claude 4.5系=active だが Anthropic 用途フォーム提出が必須(オーナーのコンソール操作)。
+  #   → 提出不要で即動作の Nova Lite を暫定採用。
+  # - 2026-07 オーナー裁定: タグ精度不足のため Nova Pro へ格上げ(同じAmazonファミリー=フォーム不要・
+  #   同じ messages-v1 形式・IAMは foundation-model/* 許可済みで変更不要)。≈$0.003/枚(新規分のみ)。
+  # さらに精度が欲しい場合: 用途フォーム提出後に us.anthropic.claude-haiku-4-5-20251001-v1:0 等へ
+  # 差し替え可能。enrich は model id 接頭辞で body 形式を分岐する。
+  description = "Bedrock model id for Japanese tag generation. MUST be vision-capable. Default amazon.nova-pro-v1:0 (no Anthropic use-case form, image-capable). For Claude, submit the Anthropic use-case form and set a us.* inference-profile id."
   type        = string
-  default     = "amazon.nova-lite-v1:0"
+  default     = "amazon.nova-pro-v1:0"
 }
 
 variable "embedding_dimension" {

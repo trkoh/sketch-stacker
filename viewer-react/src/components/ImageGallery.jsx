@@ -493,6 +493,13 @@ const ImageGallery = () => {
           意味検索（U3b）が有効な間は二重フィルタの混乱を避けるため非表示。 */}
       {!searchActive && chipTags.length > 0 && (
         <div className="tag-filter" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '10px 0', alignItems: 'center' }}>
+          {/* タグはAIによる自動生成であることを明示（手動タグ付けはしていない） */}
+          <span
+            title="タグは画像からAI（Amazon Bedrock）が自動生成したものです。手動では付けていません。"
+            style={{ fontSize: '0.75rem', color: '#888', padding: '4px 6px', whiteSpace: 'nowrap' }}
+          >
+            🤖 AI自動タグ:
+          </span>
           {selectedTags.length > 0 && (
             <button
               onClick={() => setSelectedTags([])}
