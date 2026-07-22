@@ -4,6 +4,7 @@ import Modal from './Modal';
 import ContributionCalendar from './ContributionCalendar';
 import PhotoGallery from './PhotoGallery';
 import Masonry from 'react-masonry-css';
+import { captureEvent } from '../analytics.js';
 
 const ImageGallery = () => {
   const [images, setImages] = useState([]);
@@ -182,6 +183,8 @@ const ImageGallery = () => {
   };
 
   const handleImageClick = (imageUrl, imageName) => {
+    // どの絵が拡大表示(タップ)されたかを計測(issue #59)
+    captureEvent('image_tap', { imageId: imageName });
     setModalImageUrl(imageUrl);
     setModalImageName(imageName || '');
     setModalOpen(true);
