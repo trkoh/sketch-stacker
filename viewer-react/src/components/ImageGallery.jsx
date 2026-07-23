@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import ImageItem from './ImageItem';
 import Modal from './Modal';
 import ContributionCalendar from './ContributionCalendar';
@@ -20,7 +20,15 @@ const ImageGallery = () => {
   // 管理モード中は GET /memos（認証付き一括）で非公開含む全メモに置き換える。
   const [publicMemos, setPublicMemos] = useState({});   // imageId -> {memo, visibility:'public'}
   const [adminMemos, setAdminMemos] = useState(null);   // null=未取得（非管理時）
-  const [selectedTags, setSelectedTags] = useState([]); // AND 絞り込み（選択タグを全て含む画像のみ）
+  // タグ絞り込み(AND)・期間絞り込み(年/月)。初期値はURLクエリ(?tags=,?y=,?m=)から復元=ブックマーク可能
+  const [selectedTags, setSelectedTags] = useState(() => {
+    const t = new URLSearchParams(window.location.search).get('tags');
+    return t ? t.split(',').filter(Boolean) : [];
+  });
+  const [selectedYear, setSelectedYear] = useState(() => new URLSearchParams(window.location.search).get('y') || '');
+  const [selectedMonth, setSelectedMonth] = useState(() => new URLSearchParams(window.location.search).get('m') || '');
+  const [tagQuery, setTagQuery] = useState('');       // タグチップの絞り込み入力
+  const [showAllTags, setShowAllTags] = useState(false); // 上位40件制限の解除
   // 管理モード: 認証情報はメモリ上のみ保持（localStorageには残さない＝再読込で消える）。
   // ブックマーク用に URL フラグメント #k=ユーザー名:パスワード での自動ログインに対応。
   // フラグメントはサーバへ送信されないため CDN/アクセスログに残らない（履歴・ブックマークには残る＝
@@ -53,6 +61,8 @@ const ImageGallery = () => {
   const [viewMode, setViewMode] = useState('images');
   // U-P2: 絵モーダルに紐づく参照写真を出すための photoId -> presigned URL マップ（管理モード時に遅延取得）
   const [photoUrlMap, setPhotoUrlMap] = useState(null);
+  // 無限スクロール: 末尾の番兵要素が見えたら自動で追加読み込みする IntersectionObserver
+  const infiniteObserverRef = useRef(null);
 
   // 設定
   const BASE_URL = "https://d3a21s3joww9j4.cloudfront.net/";
@@ -70,10 +80,22 @@ const ImageGallery = () => {
     fetchImages();
   }, []);
 
-  // タグ選択が変わったら表示件数をリセット（先頭から見せ直す）
+  // 絞り込み条件が変わったら表示件数をリセット（先頭から見せ直す）
   useEffect(() => {
     setVisibleCount(INITIAL_COUNT);
-  }, [selectedTags]);
+  }, [selectedTags, selectedYear, selectedMonth]);
+
+  // 絞り込み状態をURLクエリに反映(?y=&m=&tags=)。ブックマーク/共有で同じ絞り込みを再現できる。
+  // 既存の ?admin と #k= はそのまま保持する。
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const setOrDel = (k, v) => { if (v) p.set(k, v); else p.delete(k); };
+    setOrDel('y', selectedYear);
+    setOrDel('m', selectedMonth);
+    setOrDel('tags', selectedTags.join(','));
+    const qs = p.toString();
+    window.history.replaceState(null, '', window.location.pathname + (qs ? '?' + qs : '') + window.location.hash);
+  }, [selectedYear, selectedMonth, selectedTags]);
 
   // 管理モード有効化で全メモ（非公開含む）を一括取得しタイルに常時表示。解除で公開分のみに戻す。
   useEffect(() => {
@@ -176,10 +198,6 @@ const ImageGallery = () => {
 
   const toggleTag = (tag) => {
     setSelectedTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
-  };
-
-  const handleLoadMore = () => {
-    setVisibleCount(c => c + INITIAL_COUNT);
   };
 
   const handleImageClick = (imageUrl, imageName) => {
@@ -370,29 +388,73 @@ const ImageGallery = () => {
   // メモ常時表示: 管理モード中は全メモ（一括取得済・非公開含む）、それ以外は公開メモのみ。
   const memosById = adminMemos || publicMemos;
 
-  // 選択タグ(AND)で絞り込み。選択が無ければ全件。
-  const filteredImages = selectedTags.length === 0
-    ? images
-    : images.filter(name => {
-        const tags = tagsById[name];
-        return tags && selectedTags.every(t => tags.includes(t));
-      });
+  // ファイル名先頭のタイムスタンプ(ms/秒)から年月を得る（ImageItemの日付表示と同じ規約）
+  const dateOfImage = (name) => {
+    const m = name.match(/(\d{10,13})(?=\.[A-Za-z]+$)/);
+    if (!m) return null;
+    const num = Number(m[1]);
+    const d = new Date(num > 1e12 ? num : num * 1000);
+    return { y: d.getFullYear(), mo: d.getMonth() + 1 };
+  };
+
+  // タグ(AND)＋期間(年/月)で絞り込み。
+  const filteredImages = images.filter(name => {
+    if (selectedTags.length > 0) {
+      const tags = tagsById[name];
+      if (!tags || !selectedTags.every(t => tags.includes(t))) return false;
+    }
+    if (selectedYear || selectedMonth) {
+      const d = dateOfImage(name);
+      if (!d) return false;
+      if (selectedYear && String(d.y) !== selectedYear) return false;
+      if (selectedMonth && String(d.mo) !== selectedMonth) return false;
+    }
+    return true;
+  });
   // 意味検索が有効なら、その類似度ランキング（既にソート済み・上位N件）を優先表示。
-  // 非検索時は従来どおりタグ絞り込み＋Load More のページング。
   const searchActive = searchResults !== null;
   const displayedImages = searchActive ? searchResults : filteredImages.slice(0, visibleCount);
   const hasMoreImages = !searchActive && displayedImages.length < filteredImages.length;
 
-  // タグチップ用: 出現頻度の高い順に上位を提示（多すぎる時の足切り）。選択中タグは常に含める。
+  // 期間ドロップダウン用の件数集計（月の件数は選択中の年の中で数える）
+  const yearCounts = {};
+  const monthCounts = {};
+  for (const name of images) {
+    const d = dateOfImage(name);
+    if (!d) continue;
+    yearCounts[d.y] = (yearCounts[d.y] || 0) + 1;
+    if (!selectedYear || String(d.y) === selectedYear) monthCounts[d.mo] = (monthCounts[d.mo] || 0) + 1;
+  }
+  const years = Object.keys(yearCounts).sort((a, b) => b - a);
+
+  // タグチップ用: 出現頻度の高い順。既定は上位40件だが、タグ検索入力か「全タグ表示」で全量に届く。
   const TAG_CHIP_LIMIT = 40;
   const tagCounts = {};
   for (const name of images) {
     for (const t of tagsById[name] || []) tagCounts[t] = (tagCounts[t] || 0) + 1;
   }
-  const topTags = Object.keys(tagCounts)
-    .sort((a, b) => tagCounts[b] - tagCounts[a] || a.localeCompare(b))
-    .slice(0, TAG_CHIP_LIMIT);
-  const chipTags = Array.from(new Set([...selectedTags, ...topTags]));
+  const allTags = Object.keys(tagCounts)
+    .sort((a, b) => tagCounts[b] - tagCounts[a] || a.localeCompare(b));
+  const tagQ = tagQuery.trim();
+  const visibleTags = tagQ
+    ? allTags.filter(t => t.includes(tagQ))
+    : (showAllTags ? allTags : allTags.slice(0, TAG_CHIP_LIMIT));
+  const chipTags = Array.from(new Set([...selectedTags, ...visibleTags]));
+
+  // 無限スクロールの番兵(コールバックref)。要素が画面下600pxに近づいたら40件追加。
+  // 番兵は hasMoreImages のときだけ描画されるので、全件表示済みなら発火しない。
+  const loadMoreSentinel = (node) => {
+    if (infiniteObserverRef.current) {
+      infiniteObserverRef.current.disconnect();
+      infiniteObserverRef.current = null;
+    }
+    if (node) {
+      infiniteObserverRef.current = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting) setVisibleCount(c => c + 40);
+      }, { rootMargin: '600px' });
+      infiniteObserverRef.current.observe(node);
+    }
+  };
 
   const breakpointColumns = {
     default: 6,
@@ -494,15 +556,65 @@ const ImageGallery = () => {
 
       {/* U3a タグ絞り込み: 自動タグ(autoTags)のチップ。クリックでAND絞り込み。タグが無ければ非表示。
           意味検索（U3b）が有効な間は二重フィルタの混乱を避けるため非表示。 */}
-      {!searchActive && chipTags.length > 0 && (
+      {/* 期間(年/月)絞り込み。ファイル名タイムスタンプ由来なので追加データ不要 */}
+      {!searchActive && images.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '10px 0', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ fontSize: '0.8rem', color: '#666' }}>📅 時期で絞り込み:</span>
+          <select
+            value={selectedYear}
+            onChange={e => { setSelectedYear(e.target.value); setSelectedMonth(''); }}
+            style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', fontSize: '0.85rem' }}
+          >
+            <option value="">すべての年</option>
+            {years.map(y => <option key={y} value={y}>{y}年（{yearCounts[y]}件）</option>)}
+          </select>
+          <select
+            value={selectedMonth}
+            onChange={e => setSelectedMonth(e.target.value)}
+            style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', fontSize: '0.85rem' }}
+          >
+            <option value="">すべての月</option>
+            {Array.from({ length: 12 }, (_, i) => i + 1).filter(mo => monthCounts[mo]).map(mo => (
+              <option key={mo} value={String(mo)}>{mo}月（{monthCounts[mo]}件）</option>
+            ))}
+          </select>
+          {(selectedYear || selectedMonth) && (
+            <button
+              onClick={() => { setSelectedYear(''); setSelectedMonth(''); }}
+              style={{ padding: '4px 10px', borderRadius: 14, border: '1px solid #ccc', background: '#fff', cursor: 'pointer', fontSize: '0.8rem' }}
+            >
+              期間クリア
+            </button>
+          )}
+          <span style={{ fontSize: '0.8rem', color: '#888' }}>
+            全{images.length}件中 <strong>{filteredImages.length}件</strong>
+          </span>
+        </div>
+      )}
+
+      {!searchActive && allTags.length > 0 && (
         <div className="tag-filter" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '10px 0', alignItems: 'center' }}>
           {/* タグはAIによる自動生成であることを明示（手動タグ付けはしていない） */}
           <span
-            title="タグは画像からAI（Amazon Bedrock）が自動生成したものです。手動では付けていません。"
+            title="タグは画像からAI（Amazon Bedrock）が自動生成したものです。手動では付けていません。クリックで絞り込み（複数選択=AND）。"
             style={{ fontSize: '0.75rem', color: '#888', padding: '4px 6px', whiteSpace: 'nowrap' }}
           >
-            🤖 AI自動タグ:
+            🤖 AI自動タグで絞り込み:
           </span>
+          <input
+            placeholder={`タグを検索（全${allTags.length}個）`}
+            value={tagQuery}
+            onChange={e => setTagQuery(e.target.value)}
+            style={{ padding: '4px 10px', borderRadius: 14, border: '1px solid #ccc', fontSize: '0.8rem', width: 160 }}
+          />
+          {!tagQ && allTags.length > TAG_CHIP_LIMIT && (
+            <button
+              onClick={() => setShowAllTags(s => !s)}
+              style={{ padding: '4px 10px', borderRadius: 14, border: '1px solid #ccc', background: '#fff', cursor: 'pointer', fontSize: '0.8rem' }}
+            >
+              {showAllTags ? '上位のみ表示' : `全タグを表示（${allTags.length}）`}
+            </button>
+          )}
           {selectedTags.length > 0 && (
             <button
               onClick={() => setSelectedTags([])}
@@ -550,13 +662,16 @@ const ImageGallery = () => {
         ))}
       </Masonry>
 
+      {/* 無限スクロール: この番兵が画面に近づくと自動で追加読み込み。ボタンは「一気に全部」用 */}
       {hasMoreImages && (
-        <button
-          className="load-more"
-          onClick={handleLoadMore}
-        >
-          Load More ({Math.min(INITIAL_COUNT, filteredImages.length - displayedImages.length)} more)
-        </button>
+        <div ref={loadMoreSentinel} style={{ textAlign: 'center' }}>
+          <button
+            className="load-more"
+            onClick={() => setVisibleCount(filteredImages.length)}
+          >
+            すべて表示（残り {filteredImages.length - displayedImages.length} 件）
+          </button>
+        </div>
       )}
 
       <Modal
