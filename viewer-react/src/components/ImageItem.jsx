@@ -1,3 +1,5 @@
+import { captureEvent } from '../analytics.js';
+
 const ImageItem = ({ imageName, baseUrl, onImageClick, adminMode, onDelete, onMemoEdit, memoInfo }) => {
   const extractTimestamp = (name) => {
     const m = name.match(/(\d{10,13})(?=\.[A-Za-z]+$)/);
@@ -22,12 +24,16 @@ const ImageItem = ({ imageName, baseUrl, onImageClick, adminMode, onDelete, onMe
 
   const handleCopyUrl = (e) => {
     e.stopPropagation();
+    // どの絵のURLがコピーされたかを計測(issue #59)
+    captureEvent('image_copy', { imageId: imageName });
     const imageUrl = getImageUrl();
     navigator.clipboard.writeText(imageUrl);
   };
 
   const handleOpenImage = (e) => {
     e.stopPropagation();
+    // どの絵がOpenされたかを計測(issue #59)
+    captureEvent('image_open', { imageId: imageName });
     const imageUrl = getImageUrl();
     window.open(imageUrl, "_blank");
   };
