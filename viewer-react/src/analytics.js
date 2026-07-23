@@ -6,7 +6,7 @@
 // 空文字の間は計測は完全に無効(何も送らない・posthogを初期化すらしない)。
 import posthog from 'posthog-js';
 
-const POSTHOG_KEY = ''; // ← issue #59 STEP 2 でオーナーのプロジェクトAPIキーを設定
+const POSTHOG_KEY = 'phc_vdmnmoe8TgBCni3MaDEZGfwfeV8Z5nqpN6rcuEa8k6UV'; // オーナーのプロジェクトAPIキー(公開トークン・issue #59)
 const POSTHOG_HOST = 'https://us.i.posthog.com'; // US Cloudの既定ホスト
 
 let enabled = false;
