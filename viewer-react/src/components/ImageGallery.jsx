@@ -27,6 +27,9 @@ const ImageGallery = () => {
   });
   const [selectedYear, setSelectedYear] = useState(() => new URLSearchParams(window.location.search).get('y') || '');
   const [selectedMonth, setSelectedMonth] = useState(() => new URLSearchParams(window.location.search).get('m') || '');
+  // カレンダーの日クリックで特定日(YYYY-MM-DD)に絞り込み。並び順は新しい順/古い順の切替
+  const [selectedDate, setSelectedDate] = useState(() => new URLSearchParams(window.location.search).get('d') || '');
+  const [sortOrder, setSortOrder] = useState(() => new URLSearchParams(window.location.search).get('sort') === 'old' ? 'old' : 'new');
   const [tagQuery, setTagQuery] = useState('');       // タグチップの絞り込み入力
   const [showAllTags, setShowAllTags] = useState(false); // 上位40件制限の解除
   // 管理モード: 認証情報はメモリ上のみ保持（localStorageには残さない＝再読込で消える）。
@@ -83,7 +86,7 @@ const ImageGallery = () => {
   // 絞り込み条件が変わったら表示件数をリセット（先頭から見せ直す）
   useEffect(() => {
     setVisibleCount(INITIAL_COUNT);
-  }, [selectedTags, selectedYear, selectedMonth]);
+  }, [selectedTags, selectedYear, selectedMonth, selectedDate, sortOrder]);
 
   // 絞り込み状態をURLクエリに反映(?y=&m=&tags=)。ブックマーク/共有で同じ絞り込みを再現できる。
   // 既存の ?admin と #k= はそのまま保持する。
@@ -92,10 +95,12 @@ const ImageGallery = () => {
     const setOrDel = (k, v) => { if (v) p.set(k, v); else p.delete(k); };
     setOrDel('y', selectedYear);
     setOrDel('m', selectedMonth);
+    setOrDel('d', selectedDate);
+    setOrDel('sort', sortOrder === 'old' ? 'old' : '');
     setOrDel('tags', selectedTags.join(','));
     const qs = p.toString();
     window.history.replaceState(null, '', window.location.pathname + (qs ? '?' + qs : '') + window.location.hash);
-  }, [selectedYear, selectedMonth, selectedTags]);
+  }, [selectedYear, selectedMonth, selectedDate, sortOrder, selectedTags]);
 
   // 管理モード有効化で全メモ（非公開含む）を一括取得しタイルに常時表示。解除で公開分のみに戻す。
   useEffect(() => {
@@ -397,7 +402,15 @@ const ImageGallery = () => {
     return { y: d.getFullYear(), mo: d.getMonth() + 1 };
   };
 
-  // タグ(AND)＋期間(年/月)で絞り込み。
+  // カレンダーと同じ規約(UTCのYYYY-MM-DD)で日付キーを得る。日クリック絞り込みの照合に使う
+  const dateKeyOfImage = (name) => {
+    const m = name.match(/(\d{10,13})(?=\.[A-Za-z]+$)/);
+    if (!m) return null;
+    const num = Number(m[1]);
+    return new Date(num > 1e12 ? num : num * 1000).toISOString().split('T')[0];
+  };
+
+  // タグ(AND)＋期間(年/月)＋特定日で絞り込み。
   const filteredImages = images.filter(name => {
     if (selectedTags.length > 0) {
       const tags = tagsById[name];
@@ -409,12 +422,29 @@ const ImageGallery = () => {
       if (selectedYear && String(d.y) !== selectedYear) return false;
       if (selectedMonth && String(d.mo) !== selectedMonth) return false;
     }
+    if (selectedDate && dateKeyOfImage(name) !== selectedDate) return false;
     return true;
   });
+  // 並び順: images はファイル名降順(新しい順)なので、古い順は反転するだけ
+  const orderedImages = sortOrder === 'old' ? [...filteredImages].reverse() : filteredImages;
   // 意味検索が有効なら、その類似度ランキング（既にソート済み・上位N件）を優先表示。
   const searchActive = searchResults !== null;
-  const displayedImages = searchActive ? searchResults : filteredImages.slice(0, visibleCount);
-  const hasMoreImages = !searchActive && displayedImages.length < filteredImages.length;
+  const displayedImages = searchActive ? searchResults : orderedImages.slice(0, visibleCount);
+  const hasMoreImages = !searchActive && displayedImages.length < orderedImages.length;
+
+  // モーダルの前後ナビ: いま表示中の並び(検索中はランキング)の中を移動する
+  const navList = searchActive ? searchResults : orderedImages;
+  const navIndex = modalImageName ? navList.indexOf(modalImageName) : -1;
+  const navModal = (delta) => {
+    const next = navIndex + delta;
+    if (navIndex < 0 || next < 0 || next >= navList.length) return;
+    const name = navList[next];
+    captureEvent('image_tap', { imageId: name, source: 'modal_nav' });
+    setModalImageUrl(BASE_URL + name);
+    setModalImageName(name);
+    // ナビで表示範囲の先まで進んだら、閉じた後のグリッドにも追いつかせる
+    if (!searchActive && next + 1 > visibleCount) setVisibleCount(next + 1);
+  };
 
   // 期間ドロップダウン用の件数集計（月の件数は選択中の年の中で数える）
   const yearCounts = {};
@@ -551,8 +581,12 @@ const ImageGallery = () => {
         </form>
       )}
 
-      {/* Contribution Calendar */}
-      <ContributionCalendar images={images} />
+      {/* Contribution Calendar（日セルのクリックでその日の絵に絞り込み） */}
+      <ContributionCalendar
+        images={images}
+        selectedDate={selectedDate}
+        onDayClick={(dateKey) => setSelectedDate(prev => prev === dateKey ? '' : dateKey)}
+      />
 
       {/* U3a タグ絞り込み: 自動タグ(autoTags)のチップ。クリックでAND絞り込み。タグが無ければ非表示。
           意味検索（U3b）が有効な間は二重フィルタの混乱を避けるため非表示。 */}
@@ -586,6 +620,23 @@ const ImageGallery = () => {
               期間クリア
             </button>
           )}
+          {/* カレンダー日クリックの絞り込み表示(クリックで解除) */}
+          {selectedDate && (
+            <button
+              onClick={() => setSelectedDate('')}
+              title="クリックで解除"
+              style={{ padding: '4px 10px', borderRadius: 14, border: '1px solid #e74c3c', background: '#fdecea', color: '#c0392b', cursor: 'pointer', fontSize: '0.8rem' }}
+            >
+              📆 {selectedDate} ✕
+            </button>
+          )}
+          <button
+            onClick={() => setSortOrder(o => o === 'old' ? 'new' : 'old')}
+            title="表示順を切り替え"
+            style={{ padding: '4px 10px', borderRadius: 14, border: '1px solid #ccc', background: '#fff', cursor: 'pointer', fontSize: '0.8rem' }}
+          >
+            {sortOrder === 'old' ? '↑ 古い順' : '↓ 新しい順'}
+          </button>
           <span style={{ fontSize: '0.8rem', color: '#888' }}>
             全{images.length}件中 <strong>{filteredImages.length}件</strong>
           </span>
@@ -685,6 +736,10 @@ const ImageGallery = () => {
             ? (memosById[modalImageName].refPhotos || []).map(id => photoUrlMap[id]).filter(Boolean)
             : []
         }
+        onPrev={() => navModal(-1)}
+        onNext={() => navModal(1)}
+        hasPrev={navIndex > 0}
+        hasNext={navIndex >= 0 && navIndex < navList.length - 1}
         onClose={handleModalClose}
       />
 
