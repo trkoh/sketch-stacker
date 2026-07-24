@@ -236,3 +236,8 @@
     color: #7d8590;
   }
 }
+/* 日付クリック絞り込みの選択中ハイライト */
+.day.day-selected {
+  outline: 2px solid #e74c3c;
+  outline-offset: 1px;
+}

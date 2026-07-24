@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import './ContributionCalendar.css';
 
-const ContributionCalendar = ({ images = [] }) => {
+// onDayClick: 日セルのクリックでその日に絞り込む(ImageGallery側でフィルタ)。selectedDate は選択中ハイライト用。
+const ContributionCalendar = ({ images = [], onDayClick, selectedDate }) => {
   const [contributionData, setContributionData] = useState({});
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
@@ -155,10 +156,12 @@ const ContributionCalendar = ({ images = [] }) => {
                 {week.map((day, dayIndex) => (
                   <div
                     key={`${weekIndex}-${dayIndex}`}
-                    className={`day level-${day.level} ${!day.isCurrentYear ? 'outside-year' : ''}`}
-                    title={`${day.count} uploads on ${day.dateKey}`}
+                    className={`day level-${day.level} ${!day.isCurrentYear ? 'outside-year' : ''} ${selectedDate === day.dateKey ? 'day-selected' : ''}`}
+                    title={day.count > 0 ? `${day.count} uploads on ${day.dateKey}（クリックでこの日に絞り込み）` : `${day.count} uploads on ${day.dateKey}`}
                     data-count={day.count}
                     data-date={day.dateKey}
+                    onClick={() => { if (day.count > 0 && onDayClick) onDayClick(day.dateKey); }}
+                    style={day.count > 0 ? { cursor: 'pointer' } : undefined}
                   />
                 ))}
               </div>
