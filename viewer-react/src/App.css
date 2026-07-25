@@ -141,7 +141,11 @@
   margin-bottom: 12px;
 }
 
+/* カレンダー単体で使う時の max-width:828px はフィルタ枠の中では不要（枠自体が幅を決める）。
+   これを外さないとヘッダ内の年セレクタが枠の右端まで届かず、枠内で左に寄って見える
+   （オーナー指摘の症状の直接原因）。 */
 .filters-panel > .contribution-calendar {
+  max-width: none;
   margin: 0 0 14px;
 }
 
