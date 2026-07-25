@@ -19,6 +19,25 @@ export function initAnalytics() {
   enabled = true;
 }
 
+/**
+ * このブラウザを計測対象から永続的に除外する(オーナー自身のアクセス除外用)。
+ * opt-out状態は localStorage/cookie に保存され、以後このブラウザからは一切送信されない
+ * (公式: https://posthog.com/docs/privacy/data-collection)。
+ * 元に戻すにはブラウザのコンソールで localStorage.clear() するか、
+ * 開発者ツールから posthog.opt_in_capturing() を呼ぶ。
+ */
+export function optOutThisBrowser() {
+  if (!POSTHOG_KEY) return;
+  try {
+    if (!posthog.has_opted_out_capturing()) {
+      posthog.opt_out_capturing();
+      console.info('[analytics] このブラウザは計測対象外になりました(オーナー除外)');
+    }
+  } catch (e) {
+    console.warn('analytics opt-out failed', e);
+  }
+}
+
 /** カスタムイベント送信。未初期化なら黙って無視(計測がアプリ動作を壊さないこと最優先)。 */
 export function captureEvent(name, props) {
   if (!enabled) return;

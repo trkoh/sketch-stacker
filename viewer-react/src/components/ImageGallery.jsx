@@ -4,7 +4,7 @@ import Modal from './Modal';
 import ContributionCalendar from './ContributionCalendar';
 import PhotoGallery from './PhotoGallery';
 import Masonry from 'react-masonry-css';
-import { captureEvent } from '../analytics.js';
+import { captureEvent, optOutThisBrowser } from '../analytics.js';
 
 const ImageGallery = () => {
   const [images, setImages] = useState([]);
@@ -82,6 +82,13 @@ const ImageGallery = () => {
   useEffect(() => {
     fetchImages();
   }, []);
+
+  // オーナーのアクセスを計測から除外: 管理URL(?admin / #k=)で開いたブラウザは
+  // 以後このブラウザごと永続的にPostHogの計測対象外にする(analytics.js参照)。
+  useEffect(() => {
+    if (adminUnlocked) optOutThisBrowser();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminUnlocked]);
 
   // 絞り込み条件が変わったら表示件数をリセット（先頭から見せ直す）
   useEffect(() => {
