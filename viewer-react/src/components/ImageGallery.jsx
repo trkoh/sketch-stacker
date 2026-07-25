@@ -87,7 +87,6 @@ const ImageGallery = () => {
   // 以後このブラウザごと永続的にPostHogの計測対象外にする(analytics.js参照)。
   useEffect(() => {
     if (adminUnlocked) optOutThisBrowser();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adminUnlocked]);
 
   // 絞り込み条件が変わったら表示件数をリセット（先頭から見せ直す）
