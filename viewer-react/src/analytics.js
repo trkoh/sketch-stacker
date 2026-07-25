@@ -14,8 +14,12 @@ let enabled = false;
 // オーナー除外フラグ。管理URL(?admin / #k=)で一度でも開いたブラウザに恒久的に立てる。
 const OPTOUT_FLAG = 'sketchstacker_analytics_optout';
 
-const isAdminUrl = () =>
-  new URLSearchParams(window.location.search).has('admin') || window.location.hash.startsWith('#k=');
+// 除外トリガー: 管理URL(?admin / #k=)に加えて、明示的な ?notrack でも除外フラグを立てられる
+// (管理UIを出さずに「計上されない閲覧」をしたい時用。一度開けば同じブラウザでは以後ずっと除外)。
+const isOwnerUrl = () => {
+  const p = new URLSearchParams(window.location.search);
+  return p.has('admin') || p.has('notrack') || window.location.hash.startsWith('#k=');
+};
 
 /**
  * アプリ起動時に1回呼ぶ。キー未設定なら何もしない(=計測オフ)。
@@ -30,12 +34,12 @@ const isAdminUrl = () =>
 export function initAnalytics() {
   if (!POSTHOG_KEY) return;
   try {
-    if (isAdminUrl()) localStorage.setItem(OPTOUT_FLAG, '1');
+    if (isOwnerUrl()) localStorage.setItem(OPTOUT_FLAG, '1');
     if (localStorage.getItem(OPTOUT_FLAG)) {
       console.info('[analytics] オーナー端末のため計測は無効です');
       return;
     }
-  } catch (e) {
+  } catch {
     // localStorage が使えない環境(一部プライベートモード等)では判定不能→通常計測にフォールバック
   }
   // init の書式は公式docsの標準形(https://posthog.com/docs/libraries/js)
