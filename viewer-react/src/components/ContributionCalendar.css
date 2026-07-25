@@ -128,27 +128,29 @@
   position: relative;
 }
 
-/* タグ選択・並び順トグルなどと同じ --accent 系トークンから生成する濃淡。
-   別々の色を定義するとページ内で色がバラバラになるため、ここだけの固有色は持たない。
-   level-0のみ無活動として中立グレー。 */
-.day.level-0 {
+/* 濃淡は .day(マス目)と .legend-day(凡例)の両方に付く共通クラスなので、
+   ".day.level-N" のように .day 前提のセレクタにすると凡例側(.legend-dayのみでdayを
+   持たない)に色が一切当たらず透明になる(実際に発生していたバグ)。
+   セレクタは .level-N 単独にして、マス目・凡例のどちらでも確実に色が乗るようにする。
+   opacity で中間色を作ると透過で薄濁りして見える(手抜き)ため使わない。GitHub の実配色に
+   倣い、level-1〜4 は --accent を基準にした4段階の固有色(すべて不透明)で明確に差をつける。 */
+.level-0 {
   background-color: var(--line);
 }
 
-.day.level-1 {
-  background-color: var(--accent-tint);
+.level-1 {
+  background-color: #bdf0e6;
 }
 
-.day.level-2 {
+.level-2 {
+  background-color: #5fdcc7;
+}
+
+.level-3 {
   background-color: var(--accent);
-  opacity: 0.7;
 }
 
-.day.level-3 {
-  background-color: var(--accent);
-}
-
-.day.level-4 {
+.level-4 {
   background-color: var(--accent-ink);
 }
 
