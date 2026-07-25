@@ -11,11 +11,11 @@ const POSTHOG_HOST = 'https://us.i.posthog.com'; // US Cloudの既定ホスト
 
 let enabled = false;
 
-// オーナー除外フラグ。管理URL(?admin / #k=)で一度でも開いたブラウザに恒久的に立てる。
-const OPTOUT_FLAG = 'sketchstacker_analytics_optout';
-
-// 除外トリガー: 管理URL(?admin / #k=)に加えて、明示的な ?notrack でも除外フラグを立てられる
-// (管理UIを出さずに「計上されない閲覧」をしたい時用。一度開けば同じブラウザでは以後ずっと除外)。
+// オーナー除外の判定は「今開いているURL」だけで行う【ステートレス方式】。
+// ?admin / ?notrack / #k= のいずれかが付いていれば、そのページロードでは計測しない。
+// localStorage等にフラグは一切持たない — 「このブラウザは除外済みだっけ？」という
+// 見えない状態管理をオーナーに強いないため(オーナー裁定 2026-07-19)。
+// 運用: 自分は常にブックマーク(管理URL or ?notrack)から開く。パラメータ無しで開けば計上される。
 const isOwnerUrl = () => {
   const p = new URLSearchParams(window.location.search);
   return p.has('admin') || p.has('notrack') || window.location.hash.startsWith('#k=');
@@ -23,24 +23,14 @@ const isOwnerUrl = () => {
 
 /**
  * アプリ起動時に1回呼ぶ。キー未設定なら何もしない(=計測オフ)。
- *
- * オーナー除外: posthog を初期化する「前に」管理URL判定と除外フラグを確認する。
- * フラグがある限り init 自体を行わないため、初回訪問時の $pageview を含めて
- * 1件も送信されない(初期化後に opt-out する方式だと初回1件が漏れる)。
- * 同じブラウザなら以後、公開ページを開いても計測されない。
- * 限界: 管理URLを開いたことのない別ブラウザ/別端末/シークレットウィンドウからは計測される。
- * 解除したい場合: コンソールで localStorage.removeItem('sketchstacker_analytics_optout')
+ * オーナー除外URLなら posthog を初期化すらしない = このページロードからは
+ * $pageview 含め1件も送信されない(SPAなので以降のタップ等も全て同一ロード内=送信されない)。
  */
 export function initAnalytics() {
   if (!POSTHOG_KEY) return;
-  try {
-    if (isOwnerUrl()) localStorage.setItem(OPTOUT_FLAG, '1');
-    if (localStorage.getItem(OPTOUT_FLAG)) {
-      console.info('[analytics] オーナー端末のため計測は無効です');
-      return;
-    }
-  } catch {
-    // localStorage が使えない環境(一部プライベートモード等)では判定不能→通常計測にフォールバック
+  if (isOwnerUrl()) {
+    console.info('[analytics] オーナーURLのためこのページロードは計測されません');
+    return;
   }
   // init の書式は公式docsの標準形(https://posthog.com/docs/libraries/js)
   posthog.init(POSTHOG_KEY, { api_host: POSTHOG_HOST, defaults: '2025-05-24' });
