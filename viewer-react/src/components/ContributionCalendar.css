@@ -2,11 +2,12 @@
 .contribution-calendar {
   width: 100%;
   max-width: 828px;
-  margin: 2rem auto;
-  padding: 1rem;
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin: 1.25rem auto;
+  padding: 1rem 1.25rem;
+  background: var(--surface, #fff);
+  border: 1px solid var(--line, #e7e4de);
+  border-radius: var(--radius, 12px);
+  box-shadow: var(--shadow-1, 0 2px 8px rgba(0, 0, 0, 0.06));
 }
 
 .calendar-header {
@@ -55,9 +56,13 @@
   position: relative;
 }
 
+/* レスポンシブ化: 1列目(曜日ラベル)は中身ぴったりの max-content で固定、2列目
+   (月ラベル+マス目)は 1fr で残り幅を全部使う。月ラベルとマス目は両方とも
+   repeat(53, 1fr) の同じグリッドを共有するので、セルは枠の幅に応じて伸縮しつつ
+   常にピクセル単位で揃う(片方だけ固定px・片方だけ%という食い違いを解消)。 */
 .calendar-grid {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: max-content 1fr;
   grid-template-rows: auto auto 1fr;
   gap: 0.5rem;
   font-size: 0.75rem;
@@ -68,6 +73,7 @@
   grid-row: 1;
   display: grid;
   grid-template-columns: repeat(53, 1fr);
+  gap: 3px;
   margin-bottom: 0.5rem;
 }
 
@@ -77,19 +83,19 @@
   text-align: left;
 }
 
+/* マス目の高さが幅に応じて可変(aspect-ratio)になったため、曜日ラベル側も固定11pxではなく
+   同じ行グリッドに乗せて自動で高さを合わせる(CSS Gridの行は既定で align-items:stretch
+   なので、同じ grid-row のマス目側の実高さに day-labels 全体が追従する)。 */
 .day-labels {
   grid-column: 1;
   grid-row: 3;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
+  display: grid;
+  grid-template-rows: repeat(7, 1fr);
+  gap: 3px;
   margin-right: 0.5rem;
-  padding-top: 1px;
 }
 
 .day-label {
-  height: 11px;
-  line-height: 11px;
   color: #656d76;
   font-size: 0.6875rem;
   text-align: right;
@@ -101,43 +107,56 @@
 .weeks-container {
   grid-column: 2;
   grid-row: 3;
-  display: flex;
-  gap: 1px;
+  display: grid;
+  /* month-labels と同じ repeat(53, 1fr)+gap を共有し、幅が変わっても常に列がラベルと一致する。
+     gap は month-labels/day-labels と3箇所とも同じ値で揃える必要がある(1つでもズレると
+     整列が崩れる)。GitHub本家に合わせ、詰まりすぎだった1pxから3pxへ余白を広げた。 */
+  grid-template-columns: repeat(53, 1fr);
+  gap: 3px;
 }
 
 .week {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 3px;
 }
 
 .day {
-  width: 11px;
-  height: 11px;
-  border-radius: 2px;
+  width: 100%;
+  aspect-ratio: 1; /* 幅に応じて高さも追従させ、常に正方形を保つ */
+  min-width: 6px;
+  /* 固定pxだとセルが responsive で大きくなった時に角丸が相対的に効かず四角く見える
+     (GitHub本家はもっと丸みがある、との指摘)。%指定でセルのサイズに追従させる。 */
+  border-radius: 24%;
   cursor: pointer;
   position: relative;
 }
 
-/* GitHub風の緑のレベル */
-.day.level-0 {
-  background-color: #ebedf0;
+/* 濃淡は .day(マス目)と .legend-day(凡例)の両方に付く共通クラスなので、
+   ".day.level-N" のように .day 前提のセレクタにすると凡例側(.legend-dayのみでdayを
+   持たない)に色が一切当たらず透明になる(実際に発生していたバグ)。
+   セレクタは .level-N 単独にして、マス目・凡例のどちらでも確実に色が乗るようにする。
+   opacity で中間色を作ると透過で薄濁りして見える(手抜き)ため使わない。GitHub の実配色に
+   倣い、level-1〜4 は --accent を基準にした4段階の固有色(すべて不透明)で明確に差をつける。 */
+.level-0 {
+  /* 「未活動」は背景に近い薄さにし、活動日との差をはっきり出す */
+  background-color: #f1efe9;
 }
 
-.day.level-1 {
-  background-color: #9be9a8;
+.level-1 {
+  background-color: #cac5b8;
 }
 
-.day.level-2 {
-  background-color: #40c463;
+.level-2 {
+  background-color: #8f8878;
 }
 
-.day.level-3 {
-  background-color: #30a14e;
+.level-3 {
+  background-color: #55503f;
 }
 
-.day.level-4 {
-  background-color: #216e39;
+.level-4 {
+  background-color: #17140f;
 }
 
 /* 年外の日付を薄く */
@@ -168,13 +187,13 @@
 
 .legend-levels {
   display: flex;
-  gap: 1px;
+  gap: 3px;
 }
 
 .legend-day {
   width: 11px;
   height: 11px;
-  border-radius: 2px;
+  border-radius: 24%;
 }
 
 .legend-text {
@@ -182,62 +201,36 @@
   color: #656d76;
 }
 
+/* カードからはみ出さず、狭い画面ではカード内で横スクロールさせる
+   （ページ全体の横スクロールを出さないため全幅で適用） */
+.calendar-grid {
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+}
+
 /* レスポンシブ対応 */
 @media (max-width: 768px) {
   .contribution-calendar {
-    padding: 0.5rem;
+    padding: 0.5rem 0.75rem;
     margin: 1rem 0;
   }
-  
+
   .calendar-header {
     flex-direction: column;
     align-items: flex-start;
   }
-  
+
   .stats {
     gap: 1rem;
   }
-  
-  .calendar-grid {
-    overflow-x: auto;
-    padding-bottom: 0.5rem;
-  }
-  
+
   .weeks-container {
     min-width: 750px;
   }
 }
 
-/* ダークモード対応（オプション） */
-@media (prefers-color-scheme: dark) {
-  .contribution-calendar {
-    background: #0d1117;
-    color: #e6edf3;
-  }
-  
-  .day.level-0 {
-    background-color: #161b22;
-  }
-  
-  .stat-item strong {
-    color: #e6edf3;
-  }
-  
-  .year-selector {
-    background: #21262d;
-    border-color: #30363d;
-    color: #e6edf3;
-  }
-  
-  .month-label,
-  .day-label,
-  .legend-text,
-  .stat-item {
-    color: #7d8590;
-  }
-}
 /* 日付クリック絞り込みの選択中ハイライト */
 .day.day-selected {
-  outline: 2px solid #e74c3c;
+  outline: 2px solid var(--accent, #2f8f5b);
   outline-offset: 1px;
 }

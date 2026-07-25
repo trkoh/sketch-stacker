@@ -31,7 +31,7 @@ const ImageGallery = () => {
   const [selectedDate, setSelectedDate] = useState(() => new URLSearchParams(window.location.search).get('d') || '');
   const [sortOrder, setSortOrder] = useState(() => new URLSearchParams(window.location.search).get('sort') === 'old' ? 'old' : 'new');
   const [tagQuery, setTagQuery] = useState('');       // タグチップの絞り込み入力
-  const [showAllTags, setShowAllTags] = useState(false); // 上位40件制限の解除
+  const [showAllTags, setShowAllTags] = useState(false); // 既定件数の制限を解除（全1136件を表示）
   // 管理モード: 認証情報はメモリ上のみ保持（localStorageには残さない＝再読込で消える）。
   // ブックマーク用に URL フラグメント #k=ユーザー名:パスワード での自動ログインに対応。
   // フラグメントはサーバへ送信されないため CDN/アクセスログに残らない（履歴・ブックマークには残る＝
@@ -457,8 +457,12 @@ const ImageGallery = () => {
   }
   const years = Object.keys(yearCounts).sort((a, b) => b - a);
 
-  // タグチップ用: 出現頻度の高い順。既定は上位40件だが、タグ検索入力か「全タグ表示」で全量に届く。
-  const TAG_CHIP_LIMIT = 40;
+  // タグチップ用: 出現頻度の高い順。
+  // 経緯: 当初は上位N件で切り捨てていて「全タグ」ボタンが見落とされ選べない、と指摘 → 切り捨てを
+  // 撤廃して全件スクロールにしたが、タグは1136個あり、狭い枠に全部詰め込むとスクロールバーの
+  // つまみが比率的にほぼ0pxになり「浮いた点」にしか見えず実用上も操作不能だった。
+  // → 既定は上位60件（枠に収まりスクロール自体ほぼ不要）+ 検索欄 + 目立つ「全タグ表示」ボタン。
+  const TAG_DEFAULT_LIMIT = 60;
   const tagCounts = {};
   for (const name of images) {
     for (const t of tagsById[name] || []) tagCounts[t] = (tagCounts[t] || 0) + 1;
@@ -468,7 +472,7 @@ const ImageGallery = () => {
   const tagQ = tagQuery.trim();
   const visibleTags = tagQ
     ? allTags.filter(t => t.includes(tagQ))
-    : (showAllTags ? allTags : allTags.slice(0, TAG_CHIP_LIMIT));
+    : (showAllTags ? allTags : allTags.slice(0, TAG_DEFAULT_LIMIT));
   const chipTags = Array.from(new Set([...selectedTags, ...visibleTags]));
 
   // 無限スクロールの番兵(コールバックref)。要素が画面下600pxに近づいたら40件追加。
@@ -495,58 +499,54 @@ const ImageGallery = () => {
     350: 1
   };
 
-  // 管理バー用のボタンスタイル（画像オーバーレイ用 .ctrl-btn は非表示制御が入るため流用しない）
-  const adminBtnStyle = {
-    padding: '6px 12px',
-    background: '#333',
-    color: '#fff',
-    border: 'none',
-    borderRadius: 4,
-    cursor: 'pointer',
-    fontSize: '0.85rem'
-  };
-
   return (
     <>
+      {/* 最小ヘッダ: 総数だけ。ワードマークは意図的に出さない（オーナー指定） */}
+      {images.length > 0 && (
+        <div className="site-header">
+          <span className="site-count">{images.length}</span>
+        </div>
+      )}
+
       {/* 管理UI: URLに ?admin が付いている時だけ表示。一般訪問者には何も出さない */}
       {adminUnlocked && (
-      <div className="admin-bar" style={{ margin: '8px 0', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div className="admin-bar">
         {!admin && !adminForm.open && (
-          <button style={adminBtnStyle} onClick={() => setAdminForm({ ...adminForm, open: true })}>
-            管理モード
+          <button className="btn btn-dark" onClick={() => setAdminForm({ ...adminForm, open: true })}>
+            Admin
           </button>
         )}
         {!admin && adminForm.open && (
-          <form onSubmit={enableAdmin} style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
+          <form onSubmit={enableAdmin}>
             <input
-              placeholder="ユーザー名"
+              placeholder="Username"
               autoComplete="username"
               value={adminForm.username}
               onChange={e => setAdminForm({ ...adminForm, username: e.target.value })}
             />
             <input
               type="password"
-              placeholder="パスワード"
+              placeholder="Password"
               autoComplete="current-password"
               value={adminForm.password}
               onChange={e => setAdminForm({ ...adminForm, password: e.target.value })}
             />
-            <button style={adminBtnStyle} type="submit">有効化</button>
-            <button style={adminBtnStyle} type="button" onClick={() => setAdminForm({ open: false, username: '', password: '' })}>
-              キャンセル
+            <button className="btn btn-dark" type="submit">Sign in</button>
+            <button className="btn" type="button" onClick={() => setAdminForm({ open: false, username: '', password: '' })}>
+              Cancel
             </button>
           </form>
         )}
         {admin && (
           <>
-            <span style={{ color: '#c0392b', fontWeight: 'bold' }}>● 管理モード（削除可能）</span>
-            <button style={adminBtnStyle} onClick={disableAdmin}>解除</button>
+            <span className="admin-live">Admin mode</span>
+            <button className="btn" onClick={disableAdmin}>Sign out</button>
             {/* U-P1: 絵/リファレンス写真の切替（写真は非公開・管理モード限定） */}
             <button
-              style={{ ...adminBtnStyle, background: viewMode === 'photos' ? '#2c3e50' : '#333' }}
+              className={`btn btn-dark ${viewMode === 'photos' ? 'is-active' : ''}`}
               onClick={() => setViewMode(m => m === 'photos' ? 'images' : 'photos')}
             >
-              {viewMode === 'photos' ? '絵を表示' : '写真を表示'}
+              {viewMode === 'photos' ? 'Drawings' : 'Reference photos'}
             </button>
           </>
         )}
@@ -560,138 +560,133 @@ const ImageGallery = () => {
       <>
 
 
-      {/* U3b 意味検索: オーナー限定（クエリ埋め込みAPIがBasic認証必須=ADR-005）。管理モード時のみ表示。 */}
-      {admin && (
-        <form onSubmit={handleSearch} className="semantic-search" style={{ display: 'flex', gap: 6, margin: '8px 0', flexWrap: 'wrap', alignItems: 'center' }}>
-          <input
-            placeholder="意味で検索（例: 山並みの風景 / セーラー服の少女）"
-            value={searchInput}
-            onChange={e => setSearchInput(e.target.value)}
-            style={{ flex: '1 1 260px', minWidth: 200, padding: '6px 10px', border: '1px solid #ccc', borderRadius: 4 }}
-          />
-          <button type="submit" style={adminBtnStyle} disabled={searching || !searchInput.trim()}>
-            {searching ? '検索中…' : '意味検索'}
-          </button>
-          {searchActive && (
-            <button type="button" style={adminBtnStyle} onClick={clearSearch}>
-              検索クリア（{searchResults.length}件）
-            </button>
-          )}
-          {searchError && <span style={{ color: '#c0392b', fontSize: '0.85rem' }}>{searchError}</span>}
-        </form>
-      )}
+      {/* フィルタ枠: カレンダー・期間・タグ・(管理時)意味検索を1つの視覚的な枠にまとめる。
+          以前はそれぞれ独立したブロックで、「ここを操作すると絞り込める」ことが伝わらなかった
+          （オーナーフィードバック）。枠+見出し「Filter」で1つの操作対象であることを明示する。 */}
+      {images.length > 0 && (
+        <section className="filters-panel">
+          <div className="filters-label">Filter</div>
 
-      {/* Contribution Calendar（日セルのクリックでその日の絵に絞り込み） */}
-      <ContributionCalendar
-        images={images}
-        selectedDate={selectedDate}
-        onDayClick={(dateKey) => setSelectedDate(prev => prev === dateKey ? '' : dateKey)}
-      />
-
-      {/* U3a タグ絞り込み: 自動タグ(autoTags)のチップ。クリックでAND絞り込み。タグが無ければ非表示。
-          意味検索（U3b）が有効な間は二重フィルタの混乱を避けるため非表示。 */}
-      {/* 期間(年/月)絞り込み。ファイル名タイムスタンプ由来なので追加データ不要 */}
-      {!searchActive && images.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '10px 0', alignItems: 'center', justifyContent: 'center' }}>
-          <span style={{ fontSize: '0.8rem', color: '#666' }}>📅 時期で絞り込み:</span>
-          <select
-            value={selectedYear}
-            onChange={e => { setSelectedYear(e.target.value); setSelectedMonth(''); }}
-            style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', fontSize: '0.85rem' }}
-          >
-            <option value="">すべての年</option>
-            {years.map(y => <option key={y} value={y}>{y}年（{yearCounts[y]}件）</option>)}
-          </select>
-          <select
-            value={selectedMonth}
-            onChange={e => setSelectedMonth(e.target.value)}
-            style={{ padding: '4px 8px', borderRadius: 4, border: '1px solid #ccc', fontSize: '0.85rem' }}
-          >
-            <option value="">すべての月</option>
-            {Array.from({ length: 12 }, (_, i) => i + 1).filter(mo => monthCounts[mo]).map(mo => (
-              <option key={mo} value={String(mo)}>{mo}月（{monthCounts[mo]}件）</option>
-            ))}
-          </select>
-          {(selectedYear || selectedMonth) && (
-            <button
-              onClick={() => { setSelectedYear(''); setSelectedMonth(''); }}
-              style={{ padding: '4px 10px', borderRadius: 14, border: '1px solid #ccc', background: '#fff', cursor: 'pointer', fontSize: '0.8rem' }}
-            >
-              期間クリア
-            </button>
-          )}
-          {/* カレンダー日クリックの絞り込み表示(クリックで解除) */}
-          {selectedDate && (
-            <button
-              onClick={() => setSelectedDate('')}
-              title="クリックで解除"
-              style={{ padding: '4px 10px', borderRadius: 14, border: '1px solid #e74c3c', background: '#fdecea', color: '#c0392b', cursor: 'pointer', fontSize: '0.8rem' }}
-            >
-              📆 {selectedDate} ✕
-            </button>
-          )}
-          <button
-            onClick={() => setSortOrder(o => o === 'old' ? 'new' : 'old')}
-            title="表示順を切り替え"
-            style={{ padding: '4px 10px', borderRadius: 14, border: '1px solid #ccc', background: '#fff', cursor: 'pointer', fontSize: '0.8rem' }}
-          >
-            {sortOrder === 'old' ? '↑ 古い順' : '↓ 新しい順'}
-          </button>
-          <span style={{ fontSize: '0.8rem', color: '#888' }}>
-            全{images.length}件中 <strong>{filteredImages.length}件</strong>
-          </span>
-        </div>
-      )}
-
-      {!searchActive && allTags.length > 0 && (
-        <div className="tag-filter" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '10px 0', alignItems: 'center' }}>
-          {/* タグはAIによる自動生成であることを明示（手動タグ付けはしていない） */}
-          <span
-            title="タグは画像からAI（Amazon Bedrock）が自動生成したものです。手動では付けていません。クリックで絞り込み（複数選択=AND）。"
-            style={{ fontSize: '0.75rem', color: '#888', padding: '4px 6px', whiteSpace: 'nowrap' }}
-          >
-            🤖 AI自動タグで絞り込み:
-          </span>
-          <input
-            placeholder={`タグを検索（全${allTags.length}個）`}
-            value={tagQuery}
-            onChange={e => setTagQuery(e.target.value)}
-            style={{ padding: '4px 10px', borderRadius: 14, border: '1px solid #ccc', fontSize: '0.8rem', width: 160 }}
-          />
-          {!tagQ && allTags.length > TAG_CHIP_LIMIT && (
-            <button
-              onClick={() => setShowAllTags(s => !s)}
-              style={{ padding: '4px 10px', borderRadius: 14, border: '1px solid #ccc', background: '#fff', cursor: 'pointer', fontSize: '0.8rem' }}
-            >
-              {showAllTags ? '上位のみ表示' : `全タグを表示（${allTags.length}）`}
-            </button>
-          )}
-          {selectedTags.length > 0 && (
-            <button
-              onClick={() => setSelectedTags([])}
-              style={{ padding: '4px 10px', borderRadius: 14, border: '1px solid #ccc', background: '#fff', cursor: 'pointer', fontSize: '0.8rem' }}
-            >
-              クリア（{filteredImages.length}件）
-            </button>
-          )}
-          {chipTags.map(tag => {
-            const on = selectedTags.includes(tag);
-            return (
-              <button
-                key={tag}
-                onClick={() => toggleTag(tag)}
-                style={{
-                  padding: '4px 10px', borderRadius: 14, cursor: 'pointer', fontSize: '0.8rem',
-                  border: on ? '1px solid #2d7' : '1px solid #ddd',
-                  background: on ? '#2d7' : '#f5f5f5',
-                  color: on ? '#fff' : '#333',
-                }}
-              >
-                {tag}{tagCounts[tag] ? ` (${tagCounts[tag]})` : ''}
+          {/* U3b 意味検索: オーナー限定（クエリ埋め込みAPIがBasic認証必須=ADR-005）。管理モード時のみ表示。 */}
+          {admin && (
+            <form onSubmit={handleSearch} className="semantic-search">
+              <input
+                className="input"
+                placeholder="Search by meaning (e.g. mountain ridge, girl in uniform)"
+                value={searchInput}
+                onChange={e => setSearchInput(e.target.value)}
+              />
+              <button type="submit" className="btn btn-dark" disabled={searching || !searchInput.trim()}>
+                {searching ? 'Searching…' : 'Search'}
               </button>
-            );
-          })}
-        </div>
+              {searchActive && (
+                <button type="button" className="btn" onClick={clearSearch}>
+                  Clear ({searchResults.length})
+                </button>
+              )}
+              {searchError && <span className="search-error">{searchError}</span>}
+            </form>
+          )}
+
+          {/* Contribution Calendar（日セルのクリックでその日の絵に絞り込み） */}
+          <ContributionCalendar
+            images={images}
+            selectedDate={selectedDate}
+            onDayClick={(dateKey) => setSelectedDate(prev => prev === dateKey ? '' : dateKey)}
+          />
+
+          {/* 期間(年/月)絞り込み。ファイル名タイムスタンプ由来なので追加データ不要。
+              意味検索が有効な間は二重フィルタの混乱を避けるため非表示。 */}
+          {!searchActive && (
+            <div className="toolbar">
+              <select
+                className="select"
+                value={selectedYear}
+                onChange={e => { setSelectedYear(e.target.value); setSelectedMonth(''); }}
+              >
+                <option value="">All years</option>
+                {years.map(y => <option key={y} value={y}>{y} ({yearCounts[y]})</option>)}
+              </select>
+              <select
+                className="select"
+                value={selectedMonth}
+                onChange={e => setSelectedMonth(e.target.value)}
+              >
+                <option value="">All months</option>
+                {Array.from({ length: 12 }, (_, i) => i + 1).filter(mo => monthCounts[mo]).map(mo => (
+                  <option key={mo} value={String(mo)}>{mo} ({monthCounts[mo]})</option>
+                ))}
+              </select>
+              {(selectedYear || selectedMonth) && (
+                <button className="chip" onClick={() => { setSelectedYear(''); setSelectedMonth(''); }}>
+                  Clear period
+                </button>
+              )}
+              {/* カレンダー日クリックの絞り込み表示(クリックで解除) */}
+              {selectedDate && (
+                <button className="chip chip-on" onClick={() => setSelectedDate('')} title="Click to clear">
+                  {selectedDate} ×
+                </button>
+              )}
+              <button className="chip" onClick={() => setSortOrder(o => o === 'old' ? 'new' : 'old')} title="Toggle sort order">
+                {sortOrder === 'old' ? 'Oldest first' : 'Newest first'}
+              </button>
+              <span className="result-count">
+                {filteredImages.length} / {images.length}
+              </span>
+            </div>
+          )}
+
+          {/* U3a タグ絞り込み: 自動タグ(autoTags)のチップ。クリックでAND絞り込み。タグが無ければ非表示。
+              経緯: 全1136件を短い枠に詰め込むとスクロールバーのつまみが比率的に消えて操作不能
+              だったため、既定は上位60件（枠内に収まる）+ 検索 + 明確な「Show all」ボタンに変更。
+              意味検索が有効な間は二重フィルタの混乱を避けるため非表示。 */}
+          {!searchActive && allTags.length > 0 && (
+            <div className="tag-filter">
+              <div className="tag-filter-head">
+                <span
+                  className="tag-filter-hint"
+                  title="Tags are generated automatically by AI (Amazon Bedrock) from each image — not added by hand. Click to filter (multi-select = AND)."
+                >
+                  Tags
+                </span>
+                <input
+                  className="input"
+                  placeholder={`Search ${allTags.length} tags`}
+                  value={tagQuery}
+                  onChange={e => setTagQuery(e.target.value)}
+                />
+                {selectedTags.length > 0 && (
+                  <button className="chip" onClick={() => setSelectedTags([])}>
+                    Clear ({filteredImages.length})
+                  </button>
+                )}
+              </div>
+              <div className="tag-chip-scroll">
+                {chipTags.map(tag => {
+                  const on = selectedTags.includes(tag);
+                  return (
+                    <button
+                      key={tag}
+                      className={`chip ${on ? 'chip-on' : ''}`}
+                      onClick={() => toggleTag(tag)}
+                    >
+                      {tag}{tagCounts[tag] ? ` (${tagCounts[tag]})` : ''}
+                    </button>
+                  );
+                })}
+                {chipTags.length === 0 && (
+                  <span className="result-count">No tags match "{tagQ}"</span>
+                )}
+              </div>
+              {!tagQ && allTags.length > TAG_DEFAULT_LIMIT && (
+                <button className="show-all-tags" onClick={() => setShowAllTags(s => !s)}>
+                  {showAllTags ? 'Show fewer tags' : `Show all ${allTags.length} tags`}
+                </button>
+              )}
+            </div>
+          )}
+        </section>
       )}
 
       <Masonry
@@ -720,7 +715,7 @@ const ImageGallery = () => {
             className="load-more"
             onClick={() => setVisibleCount(filteredImages.length)}
           >
-            すべて表示（残り {filteredImages.length - displayedImages.length} 件）
+            Show all ({filteredImages.length - displayedImages.length} more)
           </button>
         </div>
       )}
@@ -745,42 +740,36 @@ const ImageGallery = () => {
 
       {/* U4 メモ編集（オーナー限定）: 中央のモーダルでメモ本文＋公開/非公開トグルを編集 */}
       {memoEditor && (
-        <div
-          onClick={() => !memoEditor.saving && setMemoEditor(null)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{ background: '#fff', borderRadius: 8, padding: 20, width: 'min(520px, 92vw)', boxShadow: '0 8px 30px rgba(0,0,0,0.3)' }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <strong>メモ編集</strong>
-              <span style={{ fontSize: '0.75rem', color: '#888' }}>{memoEditor.imageId}</span>
+        <div className="editor-overlay" onClick={() => !memoEditor.saving && setMemoEditor(null)}>
+          <div className="editor-card" onClick={e => e.stopPropagation()}>
+            <div className="editor-head">
+              <strong>Edit memo</strong>
+              <span className="editor-key">{memoEditor.imageId}</span>
             </div>
-            <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
-              <img src={BASE_URL + memoEditor.imageId} alt="" style={{ width: 96, height: 96, objectFit: 'contain', background: '#f5f5f5', borderRadius: 4 }} />
+            <div className="editor-row">
+              <img className="editor-thumb" src={BASE_URL + memoEditor.imageId} alt="" />
               <textarea
-                placeholder={memoEditor.loading ? '読み込み中…' : '振り返りメモ（自由記述）'}
+                className="editor-textarea"
+                placeholder={memoEditor.loading ? 'Loading…' : 'Reflection memo (free text)'}
                 value={memoEditor.memo}
                 disabled={memoEditor.loading || memoEditor.saving}
                 onChange={e => setMemoEditor(m => ({ ...m, memo: e.target.value }))}
-                style={{ flex: 1, minHeight: 110, padding: 8, border: '1px solid #ccc', borderRadius: 4, resize: 'vertical', fontFamily: 'inherit' }}
               />
             </div>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 12, fontSize: '0.9rem' }}>
+            <label className="editor-visibility">
               <input
                 type="checkbox"
                 checked={memoEditor.visibility === 'public'}
                 disabled={memoEditor.loading || memoEditor.saving}
                 onChange={e => setMemoEditor(m => ({ ...m, visibility: e.target.checked ? 'public' : 'private' }))}
               />
-              このメモを公開する（オフ＝非公開・自分だけ。デフォルト非公開）
+              Make this memo public (off = private, default)
             </label>
-            {memoEditor.error && <div style={{ color: '#c0392b', fontSize: '0.85rem', marginBottom: 8 }}>{memoEditor.error}</div>}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button style={adminBtnStyle} onClick={() => setMemoEditor(null)} disabled={memoEditor.saving}>キャンセル</button>
-              <button style={adminBtnStyle} onClick={saveMemo} disabled={memoEditor.loading || memoEditor.saving}>
-                {memoEditor.saving ? '保存中…' : '保存'}
+            {memoEditor.error && <div className="editor-error">{memoEditor.error}</div>}
+            <div className="editor-actions">
+              <button className="btn" onClick={() => setMemoEditor(null)} disabled={memoEditor.saving}>Cancel</button>
+              <button className="btn btn-dark" onClick={saveMemo} disabled={memoEditor.loading || memoEditor.saving}>
+                {memoEditor.saving ? 'Saving…' : 'Save'}
               </button>
             </div>
           </div>

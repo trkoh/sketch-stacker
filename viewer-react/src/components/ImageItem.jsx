@@ -68,22 +68,14 @@ const ImageItem = ({ imageName, baseUrl, onImageClick, adminMode, onDelete, onMe
       />
 
       {adminMode && (
-        <button
-          className="ctrl-btn delete-btn"
-          onClick={handleDeleteClick}
-          style={{ position: 'absolute', top: 4, left: 4, background: '#c0392b', color: '#fff', zIndex: 2, opacity: 1, visibility: 'visible' }}
-        >
-          削除
+        <button className="ctrl-btn delete-btn" onClick={handleDeleteClick}>
+          Delete
         </button>
       )}
 
       {adminMode && (
-        <button
-          className="ctrl-btn memo-btn"
-          onClick={handleMemoClick}
-          style={{ position: 'absolute', top: 4, left: 54, background: '#2c3e50', color: '#fff', zIndex: 2, opacity: 1, visibility: 'visible' }}
-        >
-          メモ
+        <button className="ctrl-btn memo-btn" onClick={handleMemoClick}>
+          Memo
         </button>
       )}
 
@@ -104,7 +96,7 @@ const ImageItem = ({ imageName, baseUrl, onImageClick, adminMode, onDelete, onMe
       {/* メモの常時表示（全文）。非公開メモは管理モード時のみ渡ってくる */}
       {memoInfo && memoInfo.memo && (
         <div className="memo-preview" onClick={handleImageClick}>
-          {memoInfo.visibility === 'private' && <span className="memo-lock" title="非公開メモ">🔒</span>}
+          {memoInfo.visibility === 'private' && <span className="memo-lock" title="Private memo">Private</span>}
           {memoInfo.memo}
         </div>
       )}
