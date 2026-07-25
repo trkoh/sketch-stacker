@@ -115,12 +115,6 @@
   font-weight: 600;
 }
 
-.chip-danger {
-  background: var(--danger-soft);
-  border-color: var(--danger);
-  color: var(--danger);
-}
-
 /* フィルタ枠: カレンダー・期間・タグ・意味検索を1つの操作対象として視覚的に束ねる。
    「この枠の中を触ると絵が絞れる」をひと目で伝えるのが目的（枠+見出しで領域を明示）。
    カレンダーのマス目自体を fr ベースの可変グリッドにしたので(ContributionCalendar.css)、

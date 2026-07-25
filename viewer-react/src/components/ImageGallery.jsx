@@ -624,7 +624,7 @@ const ImageGallery = () => {
               )}
               {/* カレンダー日クリックの絞り込み表示(クリックで解除) */}
               {selectedDate && (
-                <button className="chip chip-danger" onClick={() => setSelectedDate('')} title="Click to clear">
+                <button className="chip chip-on" onClick={() => setSelectedDate('')} title="Click to clear">
                   {selectedDate} ×
                 </button>
               )}
