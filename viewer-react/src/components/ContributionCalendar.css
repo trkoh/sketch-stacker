@@ -2,11 +2,12 @@
 .contribution-calendar {
   width: 100%;
   max-width: 828px;
-  margin: 2rem auto;
-  padding: 1rem;
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  margin: 1.25rem auto;
+  padding: 1rem 1.25rem;
+  background: var(--surface, #fff);
+  border: 1px solid var(--line, #e7e4de);
+  border-radius: var(--radius, 12px);
+  box-shadow: var(--shadow-1, 0 2px 8px rgba(0, 0, 0, 0.06));
 }
 
 .calendar-header {
@@ -182,62 +183,36 @@
   color: #656d76;
 }
 
+/* カードからはみ出さず、狭い画面ではカード内で横スクロールさせる
+   （ページ全体の横スクロールを出さないため全幅で適用） */
+.calendar-grid {
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+}
+
 /* レスポンシブ対応 */
 @media (max-width: 768px) {
   .contribution-calendar {
-    padding: 0.5rem;
+    padding: 0.5rem 0.75rem;
     margin: 1rem 0;
   }
-  
+
   .calendar-header {
     flex-direction: column;
     align-items: flex-start;
   }
-  
+
   .stats {
     gap: 1rem;
   }
-  
-  .calendar-grid {
-    overflow-x: auto;
-    padding-bottom: 0.5rem;
-  }
-  
+
   .weeks-container {
     min-width: 750px;
   }
 }
 
-/* ダークモード対応（オプション） */
-@media (prefers-color-scheme: dark) {
-  .contribution-calendar {
-    background: #0d1117;
-    color: #e6edf3;
-  }
-  
-  .day.level-0 {
-    background-color: #161b22;
-  }
-  
-  .stat-item strong {
-    color: #e6edf3;
-  }
-  
-  .year-selector {
-    background: #21262d;
-    border-color: #30363d;
-    color: #e6edf3;
-  }
-  
-  .month-label,
-  .day-label,
-  .legend-text,
-  .stat-item {
-    color: #7d8590;
-  }
-}
 /* 日付クリック絞り込みの選択中ハイライト */
 .day.day-selected {
-  outline: 2px solid #e74c3c;
+  outline: 2px solid var(--accent, #2f8f5b);
   outline-offset: 1px;
 }

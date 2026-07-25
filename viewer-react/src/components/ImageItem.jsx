@@ -68,21 +68,13 @@ const ImageItem = ({ imageName, baseUrl, onImageClick, adminMode, onDelete, onMe
       />
 
       {adminMode && (
-        <button
-          className="ctrl-btn delete-btn"
-          onClick={handleDeleteClick}
-          style={{ position: 'absolute', top: 4, left: 4, background: '#c0392b', color: '#fff', zIndex: 2, opacity: 1, visibility: 'visible' }}
-        >
+        <button className="ctrl-btn delete-btn" onClick={handleDeleteClick}>
           削除
         </button>
       )}
 
       {adminMode && (
-        <button
-          className="ctrl-btn memo-btn"
-          onClick={handleMemoClick}
-          style={{ position: 'absolute', top: 4, left: 54, background: '#2c3e50', color: '#fff', zIndex: 2, opacity: 1, visibility: 'visible' }}
-        >
+        <button className="ctrl-btn memo-btn" onClick={handleMemoClick}>
           メモ
         </button>
       )}
