@@ -128,25 +128,25 @@
   position: relative;
 }
 
-/* モノトーン(黒〜グレー〜白)の濃淡で強度を表現。緑は使わない。 */
+/* オーナー指定のティール(青緑)の濃淡で強度を表現。level-0のみ無活動として中立グレー。 */
 .day.level-0 {
-  background-color: #ebe9e4;
+  background-color: #e9e7e2;
 }
 
 .day.level-1 {
-  background-color: #c6c2b8;
+  background-color: #b9e6dd;
 }
 
 .day.level-2 {
-  background-color: #948e80;
+  background-color: #6fc9ba;
 }
 
 .day.level-3 {
-  background-color: #5c574c;
+  background-color: #2ea38f;
 }
 
 .day.level-4 {
-  background-color: #21201d;
+  background-color: #0f6e5d;
 }
 
 /* 年外の日付を薄く */
