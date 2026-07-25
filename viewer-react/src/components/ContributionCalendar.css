@@ -56,12 +56,12 @@
   position: relative;
 }
 
-/* 2列目を 1fr にすると、外枠(.filters-panel)が広い時に月ラベル(下記 repeat(53,1fr)で
-   その幅いっぱいに伸びる)と、実際のマス目(.weeks-container、11px固定幅で伸びない)が
-   別々の伸び方をしてズレる。2列目は auto にして、両者とも同じ固定幅で揃える。 */
+/* auto は「余白があれば埋める」実装のため、外枠が広いとグリッド全体が間延びして
+   月ラベル/マス目の位置が丸ごとズレて見える(前回 1fr→auto にしても再発した原因)。
+   max-content で「中身ぴったりの幅」に固定し、外枠の幅に関わらず絶対に伸びないようにする。 */
 .calendar-grid {
   display: grid;
-  grid-template-columns: auto auto;
+  grid-template-columns: max-content max-content;
   grid-template-rows: auto auto 1fr;
   gap: 0.5rem;
   font-size: 0.75rem;
