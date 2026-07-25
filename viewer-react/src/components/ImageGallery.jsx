@@ -31,6 +31,7 @@ const ImageGallery = () => {
   const [selectedDate, setSelectedDate] = useState(() => new URLSearchParams(window.location.search).get('d') || '');
   const [sortOrder, setSortOrder] = useState(() => new URLSearchParams(window.location.search).get('sort') === 'old' ? 'old' : 'new');
   const [tagQuery, setTagQuery] = useState('');       // タグチップの絞り込み入力
+  const [showAllTags, setShowAllTags] = useState(false); // 既定件数の制限を解除（全1136件を表示）
   // 管理モード: 認証情報はメモリ上のみ保持（localStorageには残さない＝再読込で消える）。
   // ブックマーク用に URL フラグメント #k=ユーザー名:パスワード での自動ログインに対応。
   // フラグメントはサーバへ送信されないため CDN/アクセスログに残らない（履歴・ブックマークには残る＝
@@ -456,9 +457,12 @@ const ImageGallery = () => {
   }
   const years = Object.keys(yearCounts).sort((a, b) => b - a);
 
-  // タグチップ用: 出現頻度の高い順。全量を常にスクロール可能なリストで表示する
-  // （以前は上位N件で切り捨てて「全タグ」ボタンが必要だったが、見落とされて選べないという
-  //  フィードバックを受け、切り捨てをやめて常時スクロールに変更）。
+  // タグチップ用: 出現頻度の高い順。
+  // 経緯: 当初は上位N件で切り捨てていて「全タグ」ボタンが見落とされ選べない、と指摘 → 切り捨てを
+  // 撤廃して全件スクロールにしたが、タグは1136個あり、狭い枠に全部詰め込むとスクロールバーの
+  // つまみが比率的にほぼ0pxになり「浮いた点」にしか見えず実用上も操作不能だった。
+  // → 既定は上位60件（枠に収まりスクロール自体ほぼ不要）+ 検索欄 + 目立つ「全タグ表示」ボタン。
+  const TAG_DEFAULT_LIMIT = 60;
   const tagCounts = {};
   for (const name of images) {
     for (const t of tagsById[name] || []) tagCounts[t] = (tagCounts[t] || 0) + 1;
@@ -466,7 +470,9 @@ const ImageGallery = () => {
   const allTags = Object.keys(tagCounts)
     .sort((a, b) => tagCounts[b] - tagCounts[a] || a.localeCompare(b));
   const tagQ = tagQuery.trim();
-  const visibleTags = tagQ ? allTags.filter(t => t.includes(tagQ)) : allTags;
+  const visibleTags = tagQ
+    ? allTags.filter(t => t.includes(tagQ))
+    : (showAllTags ? allTags : allTags.slice(0, TAG_DEFAULT_LIMIT));
   const chipTags = Array.from(new Set([...selectedTags, ...visibleTags]));
 
   // 無限スクロールの番兵(コールバックref)。要素が画面下600pxに近づいたら40件追加。
@@ -632,8 +638,9 @@ const ImageGallery = () => {
           )}
 
           {/* U3a タグ絞り込み: 自動タグ(autoTags)のチップ。クリックでAND絞り込み。タグが無ければ非表示。
-              以前は上位N件で切り捨てていたため他のタグを選べなかった。今は常に全件をスクロール表示
-              し、検索欄で絞り込める。意味検索が有効な間は二重フィルタの混乱を避けるため非表示。 */}
+              経緯: 全1136件を短い枠に詰め込むとスクロールバーのつまみが比率的に消えて操作不能
+              だったため、既定は上位60件（枠内に収まる）+ 検索 + 明確な「Show all」ボタンに変更。
+              意味検索が有効な間は二重フィルタの混乱を避けるため非表示。 */}
           {!searchActive && allTags.length > 0 && (
             <div className="tag-filter">
               <div className="tag-filter-head">
@@ -672,6 +679,11 @@ const ImageGallery = () => {
                   <span className="result-count">No tags match "{tagQ}"</span>
                 )}
               </div>
+              {!tagQ && allTags.length > TAG_DEFAULT_LIMIT && (
+                <button className="show-all-tags" onClick={() => setShowAllTags(s => !s)}>
+                  {showAllTags ? 'Show fewer tags' : `Show all ${allTags.length} tags`}
+                </button>
+              )}
             </div>
           )}
         </section>
