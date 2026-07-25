@@ -56,12 +56,13 @@
   position: relative;
 }
 
-/* auto は「余白があれば埋める」実装のため、外枠が広いとグリッド全体が間延びして
-   月ラベル/マス目の位置が丸ごとズレて見える(前回 1fr→auto にしても再発した原因)。
-   max-content で「中身ぴったりの幅」に固定し、外枠の幅に関わらず絶対に伸びないようにする。 */
+/* レスポンシブ化: 1列目(曜日ラベル)は中身ぴったりの max-content で固定、2列目
+   (月ラベル+マス目)は 1fr で残り幅を全部使う。月ラベルとマス目は両方とも
+   repeat(53, 1fr) の同じグリッドを共有するので、セルは枠の幅に応じて伸縮しつつ
+   常にピクセル単位で揃う(片方だけ固定px・片方だけ%という食い違いを解消)。 */
 .calendar-grid {
   display: grid;
-  grid-template-columns: max-content max-content;
+  grid-template-columns: max-content 1fr;
   grid-template-rows: auto auto 1fr;
   gap: 0.5rem;
   font-size: 0.75rem;
@@ -71,9 +72,7 @@
   grid-column: 2;
   grid-row: 1;
   display: grid;
-  /* .day(11px) + .week間ギャップ(1px) と完全一致させ、外枠の幅に関わらず
-     マス目と月ラベルが常にピクセル単位で揃うようにする */
-  grid-template-columns: repeat(53, 11px);
+  grid-template-columns: repeat(53, 1fr);
   gap: 1px;
   margin-bottom: 0.5rem;
 }
@@ -84,19 +83,19 @@
   text-align: left;
 }
 
+/* マス目の高さが幅に応じて可変(aspect-ratio)になったため、曜日ラベル側も固定11pxではなく
+   同じ行グリッドに乗せて自動で高さを合わせる(CSS Gridの行は既定で align-items:stretch
+   なので、同じ grid-row のマス目側の実高さに day-labels 全体が追従する)。 */
 .day-labels {
   grid-column: 1;
   grid-row: 3;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: repeat(7, 1fr);
   gap: 1px;
   margin-right: 0.5rem;
-  padding-top: 1px;
 }
 
 .day-label {
-  height: 11px;
-  line-height: 11px;
   color: #656d76;
   font-size: 0.6875rem;
   text-align: right;
@@ -108,7 +107,9 @@
 .weeks-container {
   grid-column: 2;
   grid-row: 3;
-  display: flex;
+  display: grid;
+  /* month-labels と同じ repeat(53, 1fr) を共有し、幅が変わっても常に列がラベルと一致する */
+  grid-template-columns: repeat(53, 1fr);
   gap: 1px;
 }
 
@@ -119,8 +120,9 @@
 }
 
 .day {
-  width: 11px;
-  height: 11px;
+  width: 100%;
+  aspect-ratio: 1; /* 幅に応じて高さも追従させ、常に正方形を保つ */
+  min-width: 6px;
   border-radius: 2px;
   cursor: pointer;
   position: relative;

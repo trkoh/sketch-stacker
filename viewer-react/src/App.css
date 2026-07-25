@@ -123,16 +123,14 @@
 
 /* フィルタ枠: カレンダー・期間・タグ・意味検索を1つの操作対象として視覚的に束ねる。
    「この枠の中を触ると絵が絞れる」をひと目で伝えるのが目的（枠+見出しで領域を明示）。
-   コンテナ全幅(最大1488px)まで広げると、中身(カレンダーの実寸=約635px)より枠だけが
-   遥かに広くなり、右側に巨大な空白ができて「カレンダーが左に浮いている」ように見える
-   （オーナー指摘）。枠自体をカレンダーの実寸に合わせた幅に収め、空白を作らない。 */
+   カレンダーのマス目自体を fr ベースの可変グリッドにしたので(ContributionCalendar.css)、
+   枠を全幅にしてもマスが追従して伸び、空白が生まれない。 */
 .filters-panel {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 16px 18px 18px;
   margin: 18px 0 28px;
-  max-width: 820px;
   box-shadow: var(--shadow-1);
 }
 
