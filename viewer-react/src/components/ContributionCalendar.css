@@ -56,9 +56,12 @@
   position: relative;
 }
 
+/* 2列目を 1fr にすると、外枠(.filters-panel)が広い時に月ラベル(下記 repeat(53,1fr)で
+   その幅いっぱいに伸びる)と、実際のマス目(.weeks-container、11px固定幅で伸びない)が
+   別々の伸び方をしてズレる。2列目は auto にして、両者とも同じ固定幅で揃える。 */
 .calendar-grid {
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto auto;
   grid-template-rows: auto auto 1fr;
   gap: 0.5rem;
   font-size: 0.75rem;
@@ -68,7 +71,10 @@
   grid-column: 2;
   grid-row: 1;
   display: grid;
-  grid-template-columns: repeat(53, 1fr);
+  /* .day(11px) + .week間ギャップ(1px) と完全一致させ、外枠の幅に関わらず
+     マス目と月ラベルが常にピクセル単位で揃うようにする */
+  grid-template-columns: repeat(53, 11px);
+  gap: 1px;
   margin-bottom: 0.5rem;
 }
 
