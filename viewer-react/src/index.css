@@ -3,16 +3,19 @@
    App.css と衝突していたため全面的に置き換えた。 */
 
 :root {
-  /* color tokens — 紙っぽい暖色ニュートラル + 抑えた緑（カレンダーの緑と同系） */
+  /* color tokens — 紙っぽい暖色ニュートラル + ティール一色。
+     選択中タグ・並び順トグル・フォーカスリング・カレンダーの濃淡まで、
+     「選択/強度」を表す色は全てこのティール一系統から生成する（バラバラ回避）。 */
   --bg: #f7f6f4;
   --surface: #ffffff;
   --ink: #21201d;
   --ink-2: #6d6a63;
   --ink-3: #a5a199;
   --line: #e7e4de;
-  --accent: #2f8f5b;
-  --accent-soft: #e9f4ee;
-  --accent-ink: #1f6b42;
+  --accent: #2ea38f;
+  --accent-tint: #bee8df;
+  --accent-soft: #e3f4f0;
+  --accent-ink: #175c4f;
   --danger: #c0392b;
   --danger-soft: #fdecea;
 

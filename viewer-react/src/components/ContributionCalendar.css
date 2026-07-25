@@ -128,25 +128,28 @@
   position: relative;
 }
 
-/* オーナー指定のティール(青緑)の濃淡で強度を表現。level-0のみ無活動として中立グレー。 */
+/* タグ選択・並び順トグルなどと同じ --accent 系トークンから生成する濃淡。
+   別々の色を定義するとページ内で色がバラバラになるため、ここだけの固有色は持たない。
+   level-0のみ無活動として中立グレー。 */
 .day.level-0 {
-  background-color: #e9e7e2;
+  background-color: var(--line);
 }
 
 .day.level-1 {
-  background-color: #b9e6dd;
+  background-color: var(--accent-tint);
 }
 
 .day.level-2 {
-  background-color: #6fc9ba;
+  background-color: var(--accent);
+  opacity: 0.7;
 }
 
 .day.level-3 {
-  background-color: #2ea38f;
+  background-color: var(--accent);
 }
 
 .day.level-4 {
-  background-color: #0f6e5d;
+  background-color: var(--accent-ink);
 }
 
 /* 年外の日付を薄く */
