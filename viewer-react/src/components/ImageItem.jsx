@@ -69,13 +69,13 @@ const ImageItem = ({ imageName, baseUrl, onImageClick, adminMode, onDelete, onMe
 
       {adminMode && (
         <button className="ctrl-btn delete-btn" onClick={handleDeleteClick}>
-          削除
+          Delete
         </button>
       )}
 
       {adminMode && (
         <button className="ctrl-btn memo-btn" onClick={handleMemoClick}>
-          メモ
+          Memo
         </button>
       )}
 
@@ -96,7 +96,7 @@ const ImageItem = ({ imageName, baseUrl, onImageClick, adminMode, onDelete, onMe
       {/* メモの常時表示（全文）。非公開メモは管理モード時のみ渡ってくる */}
       {memoInfo && memoInfo.memo && (
         <div className="memo-preview" onClick={handleImageClick}>
-          {memoInfo.visibility === 'private' && <span className="memo-lock" title="非公開メモ">🔒</span>}
+          {memoInfo.visibility === 'private' && <span className="memo-lock" title="Private memo">Private</span>}
           {memoInfo.memo}
         </div>
       )}

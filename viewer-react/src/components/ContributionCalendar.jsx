@@ -157,7 +157,7 @@ const ContributionCalendar = ({ images = [], onDayClick, selectedDate }) => {
                   <div
                     key={`${weekIndex}-${dayIndex}`}
                     className={`day level-${day.level} ${!day.isCurrentYear ? 'outside-year' : ''} ${selectedDate === day.dateKey ? 'day-selected' : ''}`}
-                    title={day.count > 0 ? `${day.count} uploads on ${day.dateKey}（クリックでこの日に絞り込み）` : `${day.count} uploads on ${day.dateKey}`}
+                    title={day.count > 0 ? `${day.count} uploads on ${day.dateKey} (click to filter)` : `${day.count} uploads on ${day.dateKey}`}
                     data-count={day.count}
                     data-date={day.dateKey}
                     onClick={() => { if (day.count > 0 && onDayClick) onDayClick(day.dateKey); }}

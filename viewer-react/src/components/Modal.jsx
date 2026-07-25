@@ -82,8 +82,8 @@ const Modal = ({ isOpen, imageUrl, memo, isPrivate, refPhotoUrls = [], onClose, 
               <img
                 key={i}
                 src={u}
-                alt={`参照写真${i + 1}`}
-                title="紐づけ済みのリファレンス写真（クリックで拡大）"
+                alt={`Reference photo ${i + 1}`}
+                title="Linked reference photo (click to enlarge)"
                 onClick={(e) => { e.stopPropagation(); window.open(u, '_blank', 'noopener'); }}
                 style={{ height: 72, borderRadius: 6, border: '2px solid rgba(255,255,255,0.8)', cursor: 'pointer' }}
               />
@@ -92,7 +92,7 @@ const Modal = ({ isOpen, imageUrl, memo, isPrivate, refPhotoUrls = [], onClose, 
         )}
         {memo && (
           <div className="modal-memo">
-            {isPrivate && <div className="modal-memo-private">🔒 非公開メモ（自分のみ）</div>}
+            {isPrivate && <div className="modal-memo-private">Private memo</div>}
             {memo}
           </div>
         )}

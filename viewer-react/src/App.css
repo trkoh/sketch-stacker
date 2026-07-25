@@ -9,39 +9,17 @@
   max-width: 1560px; /* 100vw はスクロールバー幅ぶん横スクロールを生むため使わない */
 }
 
-/* ヘッダ ------------------------------------------------- */
+/* ヘッダ: ワードマークは出さない。総数だけを右上に静かに置く ------ */
 .site-header {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  padding: 28px 4px 4px;
-}
-
-.site-title {
-  margin: 0;
-  font-size: 1.45rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  color: var(--ink);
-}
-
-.site-sub {
-  margin: 2px 0 0;
-  font-size: 0.82rem;
-  color: var(--ink-2);
+  justify-content: flex-end;
+  padding: 20px 4px 0;
 }
 
 .site-count {
-  font-size: 0.82rem;
-  color: var(--ink-2);
+  font-size: 0.8rem;
+  color: var(--ink-3);
   white-space: nowrap;
-}
-
-.site-count strong {
-  color: var(--ink);
-  font-size: 1rem;
 }
 
 /* 共通コントロール --------------------------------------- */
@@ -143,46 +121,93 @@
   color: var(--danger);
 }
 
+/* フィルタ枠: カレンダー・期間・タグ・意味検索を1つの操作対象として視覚的に束ねる。
+   「この枠の中を触ると絵が絞れる」をひと目で伝えるのが目的（枠+見出しで領域を明示）。 */
+.filters-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px 18px 18px;
+  margin: 18px 0 28px;
+  box-shadow: var(--shadow-1);
+}
+
+.filters-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-bottom: 12px;
+}
+
+.filters-panel > .contribution-calendar {
+  margin: 0 0 14px;
+}
+
 /* ツールバー（期間・並び順・件数） ----------------------- */
 .toolbar {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  justify-content: center;
-  margin: 14px 0 4px;
-}
-
-.toolbar-label {
-  font-size: 0.78rem;
-  color: var(--ink-3);
-  margin-right: -2px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
 }
 
 .result-count {
   font-size: 0.78rem;
   color: var(--ink-2);
+  margin-left: auto;
 }
 
 .result-count strong {
   color: var(--ink);
 }
 
-/* タグ絞り込み行 */
+/* タグ絞り込み */
 .tag-filter {
+  padding-top: 14px;
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.tag-filter-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.tag-filter-hint {
+  font-size: 0.72rem;
+  color: var(--ink-3);
+  white-space: nowrap;
+  cursor: help;
+}
+
+.tag-filter-head .input {
+  flex: 1 1 200px;
+  max-width: 320px;
+  height: 30px;
+  border-radius: 999px;
+}
+
+/* タグは切り捨てず全件この中でスクロールさせる（以前は上位N件で隠れて選べなかった） */
+.tag-chip-scroll {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  align-items: center;
-  justify-content: center;
-  margin: 8px 0 18px;
+  max-height: 92px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 /* 意味検索（管理モード） */
 .semantic-search {
   display: flex;
   gap: 8px;
-  margin: 10px 0;
+  margin-bottom: 14px;
   flex-wrap: wrap;
   align-items: center;
 }
@@ -338,8 +363,17 @@
 }
 
 .memo-lock {
-  margin-right: 4px;
-  font-size: 0.7rem;
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  vertical-align: 1px;
 }
 
 /* 日付ラベル */
