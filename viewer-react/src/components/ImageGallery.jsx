@@ -62,8 +62,11 @@ const ImageGallery = () => {
   const [memoEditor, setMemoEditor] = useState(null); // null=閉/{imageId,memo,visibility,loading,saving,error}
   // U-P1 リファレンス写真ビュー（管理モード限定）: 'images' | 'photos'
   const [viewMode, setViewMode] = useState('images');
-  // U-P2: 絵モーダルに紐づく参照写真を出すための photoId -> presigned URL マップ（管理モード時に遅延取得）
-  const [photoUrlMap, setPhotoUrlMap] = useState(null);
+  // U-P2: 写真一覧(presigned URL・embedding・linkedImages込み)。管理モード時に一括取得し、
+  // 絵モーダルの参照写真表示と「絵→写真の手動紐づけピッカー」の両方で使う。
+  const [photosList, setPhotosList] = useState(null);
+  // 絵側からの手動紐づけピッカー: {imageId, sortedIds:配列|null(=新しい順のまま)}
+  const [photoPicker, setPhotoPicker] = useState(null);
   // 無限スクロール: 末尾の番兵要素が見えたら自動で追加読み込みする IntersectionObserver
   const infiniteObserverRef = useRef(null);
 
@@ -127,10 +130,10 @@ const ImageGallery = () => {
     return () => { cancelled = true; };
   }, [admin]);
 
-  // U-P2: 管理モード中、紐づき表示用に写真の presigned URL マップを一度だけ取得。
-  // （URLは10分で失効するが、絵モーダルでの表示用途では再ログイン/再読込で足りる）
+  // U-P2: 管理モード中、写真一覧を一度だけ取得(参照写真の表示＋手動紐づけピッカー用)。
+  // （presigned URLは10分で失効するが、この用途では再ログイン/再読込で足りる）
   useEffect(() => {
-    if (!admin) { setPhotoUrlMap(null); return; }
+    if (!admin) { setPhotosList(null); return; }
     let cancelled = false;
     (async () => {
       try {
@@ -139,11 +142,9 @@ const ImageGallery = () => {
         });
         if (!res.ok) return; // 写真表示は補助機能。失敗しても絵のUIは成立させる
         const data = await res.json();
-        const map = {};
-        for (const p of (data && Array.isArray(data.photos)) ? data.photos : []) map[p.photoId] = p.url;
-        if (!cancelled) setPhotoUrlMap(map);
+        if (!cancelled) setPhotosList((data && Array.isArray(data.photos)) ? data.photos : []);
       } catch (e) {
-        console.warn('写真URLマップの取得に失敗（絵モーダルの参照写真表示なしで継続）', e);
+        console.warn('写真一覧の取得に失敗（参照写真表示・紐づけなしで継続）', e);
       }
     })();
     return () => { cancelled = true; };
@@ -382,6 +383,56 @@ const ImageGallery = () => {
     }
   };
 
+  // 絵→写真の手動紐づけ: 絵側から写真ピッカーを開く。
+  // 並びは「この絵との視覚類似度順」(絵か写真のembedding未生成なら新しい順のままフォールバック)。
+  const openPhotoPicker = async (imageName) => {
+    if (!admin) return;
+    setPhotoPicker({ imageId: imageName, sortedIds: null });
+    try {
+      const embs = await loadEmbeddings();
+      const mine = embs.find(e => e.imageId === imageName);
+      if (mine && photosList) {
+        const sortedIds = [...photosList]
+          .map(p => ({ id: p.photoId, score: Array.isArray(p.embedding) ? cosine(mine.embedding, p.embedding) : -Infinity }))
+          .sort((a, b) => b.score - a.score)
+          .map(x => x.id);
+        setPhotoPicker(prev => (prev && prev.imageId === imageName) ? { imageId: imageName, sortedIds } : prev);
+      }
+    } catch (e) {
+      console.warn('類似ソート不可(新しい順で表示)', e);
+    }
+  };
+
+  // 紐づけ⇄解除。既存の写真側API PUT /photos/{photoId} をそのまま利用
+  // (linkImageAdd/Remove。両テーブルへの相互保存はサーバ側が行う)。成功したらローカル状態へ即反映。
+  const togglePhotoLink = async (imageId, photoId, linked) => {
+    if (!admin) return;
+    try {
+      const res = await fetch(`${API_BASE}/photos/${encodeURIComponent(photoId)}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': 'Basic ' + btoa(`${admin.username}:${admin.password}`),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(linked ? { linkImageRemove: imageId } : { linkImageAdd: imageId }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setAdminMemos(prev => {
+        const next = { ...(prev || {}) };
+        const cur = next[imageId] || { memo: '', visibility: 'private', refPhotos: [] };
+        const set = new Set(cur.refPhotos || []);
+        if (linked) set.delete(photoId); else set.add(photoId);
+        next[imageId] = { ...cur, refPhotos: [...set] };
+        return next;
+      });
+      setPhotosList(prev => prev ? prev.map(p => p.photoId === photoId
+        ? { ...p, linkedImages: linked ? (p.linkedImages || []).filter(i => i !== imageId) : [...(p.linkedImages || []), imageId] }
+        : p) : prev);
+    } catch (err) {
+      alert(`Failed to update link: ${err.message}`);
+    }
+  };
+
   if (loading) {
     return <div>Loading...</div>;
   }
@@ -392,6 +443,8 @@ const ImageGallery = () => {
 
   // メモ常時表示: 管理モード中は全メモ（一括取得済・非公開含む）、それ以外は公開メモのみ。
   const memosById = adminMemos || publicMemos;
+  // 絵モーダルの参照写真表示用: photoId -> presigned URL
+  const photoUrlMap = photosList ? Object.fromEntries(photosList.map(p => [p.photoId, p.url])) : null;
 
   // ファイル名先頭のタイムスタンプ(ms/秒)から年月を得る（ImageItemの日付表示と同じ規約）
   const dateOfImage = (name) => {
@@ -703,6 +756,7 @@ const ImageGallery = () => {
             adminMode={!!admin}
             onDelete={handleDelete}
             onMemoEdit={openMemoEditor}
+            onLinkPhotos={openPhotoPicker}
             memoInfo={memosById[imageName]}
           />
         ))}
@@ -737,6 +791,64 @@ const ImageGallery = () => {
         hasNext={navIndex >= 0 && navIndex < navList.length - 1}
         onClose={handleModalClose}
       />
+
+      {/* 絵→写真の手動紐づけピッカー（オーナー限定）: 使ったリファレンス写真をタップで紐づけ⇄解除 */}
+      {photoPicker && (
+        <div className="editor-overlay" onClick={() => setPhotoPicker(null)}>
+          <div
+            className="editor-card"
+            style={{ width: 'min(760px, 94vw)', maxHeight: '86vh', overflowY: 'auto' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="editor-head">
+              <strong>Link reference photos</strong>
+              <span className="editor-key">{photoPicker.imageId}</span>
+            </div>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 }}>
+              <img className="editor-thumb" src={BASE_URL + photoPicker.imageId} alt="" />
+              <div style={{ fontSize: '0.8rem', color: 'var(--ink-2)' }}>
+                {photoPicker.sortedIds
+                  ? 'この絵と似ている順に並んでいます。使った写真をタップで紐づけ⇄解除。'
+                  : '新しい順に並んでいます。使った写真をタップで紐づけ⇄解除。'}
+              </div>
+            </div>
+            {!photosList && (
+              <div style={{ color: 'var(--danger)', fontSize: '0.85rem' }}>
+                写真一覧を取得できていません。管理モードに入り直してください。
+              </div>
+            )}
+            {photosList && photosList.length === 0 && (
+              <div style={{ color: 'var(--ink-2)', fontSize: '0.85rem' }}>リファレンス写真がまだありません。</div>
+            )}
+            {photosList && photosList.length > 0 && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10 }}>
+                {(photoPicker.sortedIds
+                  ? photoPicker.sortedIds.map(id => photosList.find(p => p.photoId === id)).filter(Boolean)
+                  : photosList
+                ).map(p => {
+                  const linked = !!(memosById[photoPicker.imageId] && (memosById[photoPicker.imageId].refPhotos || []).includes(p.photoId));
+                  return (
+                    <div
+                      key={p.photoId}
+                      onClick={() => togglePhotoLink(photoPicker.imageId, p.photoId, linked)}
+                      title={linked ? 'タップで紐づけ解除' : 'タップで紐づけ'}
+                      style={{ cursor: 'pointer', border: linked ? '3px solid var(--accent)' : '1px solid var(--line)', borderRadius: 6, overflow: 'hidden' }}
+                    >
+                      <img src={p.url} alt={p.photoId} loading="lazy" crossOrigin="anonymous" style={{ width: '100%', display: 'block' }} />
+                      <div style={{ fontSize: '0.7rem', padding: '2px 6px', background: linked ? 'var(--accent-soft)' : 'var(--surface)', minHeight: 18 }}>
+                        {linked ? '✓ Linked' : (p.memo ? p.memo.slice(0, 24) : '')}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <div className="editor-actions" style={{ marginTop: 12 }}>
+              <button className="btn" onClick={() => setPhotoPicker(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* U4 メモ編集（オーナー限定）: 中央のモーダルでメモ本文＋公開/非公開トグルを編集 */}
       {memoEditor && (

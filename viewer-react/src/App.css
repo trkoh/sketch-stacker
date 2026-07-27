@@ -390,6 +390,20 @@
   background: rgba(44, 62, 80, 0.88);
 }
 
+/* 絵→写真の手動紐づけボタン(Delete/Memoの下に常時表示・左列) */
+.link-btn {
+  top: 72px;
+  left: 8px;
+  right: auto;
+  opacity: 1;
+  visibility: visible;
+  background: rgba(26, 82, 118, 0.88);
+}
+
+.link-btn:hover {
+  background: rgba(26, 82, 118, 1);
+}
+
 /* メモ常時表示（タイル下） */
 .memo-preview {
   padding: 8px 10px 0;
