@@ -1,6 +1,6 @@
 import { captureEvent } from '../analytics.js';
 
-const ImageItem = ({ imageName, baseUrl, onImageClick, adminMode, onDelete, onMemoEdit, memoInfo }) => {
+const ImageItem = ({ imageName, baseUrl, onImageClick, adminMode, onDelete, onMemoEdit, onLinkPhotos, memoInfo }) => {
   const extractTimestamp = (name) => {
     const m = name.match(/(\d{10,13})(?=\.[A-Za-z]+$)/);
     if (!m) return null;
@@ -76,6 +76,17 @@ const ImageItem = ({ imageName, baseUrl, onImageClick, adminMode, onDelete, onMe
       {adminMode && (
         <button className="ctrl-btn memo-btn" onClick={handleMemoClick}>
           Memo
+        </button>
+      )}
+
+      {/* 絵→写真の手動紐づけ(アップロード後に「使った参照写真」を指定する入口) */}
+      {adminMode && onLinkPhotos && (
+        <button
+          className="ctrl-btn link-btn"
+          onClick={(e) => { e.stopPropagation(); onLinkPhotos(imageName); }}
+          title="この絵に使ったリファレンス写真を紐づける"
+        >
+          Link
         </button>
       )}
 
