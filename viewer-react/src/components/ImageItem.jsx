@@ -1,7 +1,7 @@
 import { captureEvent } from '../analytics.js';
 import MemoText from './MemoText';
 
-const ImageItem = ({ imageName, baseUrl, onImageClick, adminMode, onDelete, onMemoEdit, onLinkPhotos, memoInfo, refPhotoUrls = [] }) => {
+const ImageItem = ({ imageName, baseUrl, onImageClick, adminMode, onDelete, onMemoEdit, onLinkPhotos, onRefPhotoClick, memoInfo, refPhotos = [] }) => {
   const extractTimestamp = (name) => {
     const m = name.match(/(\d{10,13})(?=\.[A-Za-z]+$)/);
     if (!m) return null;
@@ -105,18 +105,19 @@ const ImageItem = ({ imageName, baseUrl, onImageClick, adminMode, onDelete, onMe
         Copy
       </button>
 
-      {/* 紐づけ済みリファレンス写真の常時表示（管理モード時のみ。モーダルを開かなくても見える） */}
-      {adminMode && refPhotoUrls.length > 0 && (
+      {/* 紐づけ済みリファレンス写真の常時表示（管理モード時のみ。モーダルを開かなくても見える）
+          クリックはページ内拡大(onRefPhotoClick)。旧仕様の別タブ表示は廃止 */}
+      {adminMode && refPhotos.length > 0 && (
         <div className="ref-strip">
-          {refPhotoUrls.map((u, i) => (
+          {refPhotos.map((r, i) => (
             <img
               key={i}
-              src={u}
+              src={r.url}
               alt={`ref ${i + 1}`}
               loading="lazy"
               crossOrigin="anonymous"
               title="Linked reference photo (click to enlarge)"
-              onClick={(e) => { e.stopPropagation(); window.open(u, '_blank', 'noopener'); }}
+              onClick={(e) => { e.stopPropagation(); if (onRefPhotoClick) onRefPhotoClick(r); }}
             />
           ))}
         </div>
