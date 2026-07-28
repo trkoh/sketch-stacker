@@ -238,6 +238,7 @@ const PhotoGallery = ({ admin, apiBase, baseUrl, embedUrl }) => {
         imageUrl={modal ? modal.url : ''}
         memo={modal ? modal.memo : ''}
         isPrivate={true}
+        valueUrl={modal ? modal.url : ''}
         onClose={() => setModal(null)}
       />
 

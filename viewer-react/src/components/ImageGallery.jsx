@@ -67,6 +67,8 @@ const ImageGallery = () => {
   const [photosList, setPhotosList] = useState(null);
   // 絵側からの手動紐づけピッカー: {imageId, sortedIds:配列|null(=新しい順のまま)}
   const [photoPicker, setPhotoPicker] = useState(null);
+  // 参照写真のページ内拡大: {url, memo}。絵のモーダルの上に重ねて表示(Valueボタン付き)
+  const [photoModal, setPhotoModal] = useState(null);
   // 無限スクロール: 末尾の番兵要素が見えたら自動で追加読み込みする IntersectionObserver
   const infiniteObserverRef = useRef(null);
 
@@ -443,8 +445,16 @@ const ImageGallery = () => {
 
   // メモ常時表示: 管理モード中は全メモ（一括取得済・非公開含む）、それ以外は公開メモのみ。
   const memosById = adminMemos || publicMemos;
-  // 絵モーダルの参照写真表示用: photoId -> presigned URL
-  const photoUrlMap = photosList ? Object.fromEntries(photosList.map(p => [p.photoId, p.url])) : null;
+  // 参照写真のページ内拡大用: photoId -> {url, memo} (撮影メモも拡大表示に出す)
+  const photoById = photosList ? Object.fromEntries(photosList.map(p => [p.photoId, p])) : null;
+  // 指定した絵の紐づけ写真を {url, memo} 配列で返す(タイル・モーダル共通)
+  const refPhotosOf = (imageName) =>
+    admin && photoById && memosById[imageName]
+      ? (memosById[imageName].refPhotos || [])
+          .map(id => photoById[id])
+          .filter(Boolean)
+          .map(p => ({ url: p.url, memo: p.memo || '' }))
+      : [];
 
   // ファイル名先頭のタイムスタンプ(ms/秒)から年月を得る（ImageItemの日付表示と同じ規約）
   const dateOfImage = (name) => {
@@ -758,12 +768,11 @@ const ImageGallery = () => {
             onMemoEdit={openMemoEditor}
             onLinkPhotos={openPhotoPicker}
             memoInfo={memosById[imageName]}
-            refPhotoUrls={
+            refPhotos={
               // 管理モード時: 紐づけ済み参照写真をタイルに常時表示(モーダルを開かなくても見える)
-              admin && photoUrlMap && memosById[imageName]
-                ? (memosById[imageName].refPhotos || []).map(id => photoUrlMap[id]).filter(Boolean)
-                : []
+              refPhotosOf(imageName)
             }
+            onRefPhotoClick={(p) => setPhotoModal(p)}
           />
         ))}
       </Masonry>
@@ -786,16 +795,25 @@ const ImageGallery = () => {
         memo={modalImageName && memosById[modalImageName] ? memosById[modalImageName].memo : ''}
         isPrivate={!!(modalImageName && memosById[modalImageName] && memosById[modalImageName].visibility === 'private')}
         refPhotoUrls={
-          // U-P2: この絵に紐づく参照写真（管理モード時のみ。photoUrlMap 未取得なら出さない）
-          admin && photoUrlMap && modalImageName && memosById[modalImageName]
-            ? (memosById[modalImageName].refPhotos || []).map(id => photoUrlMap[id]).filter(Boolean)
-            : []
+          // U-P2: この絵に紐づく参照写真（管理モード時のみ）
+          modalImageName ? refPhotosOf(modalImageName) : []
         }
-        onPrev={() => navModal(-1)}
-        onNext={() => navModal(1)}
+        onRefPhotoClick={(p) => setPhotoModal(p)}
+        onPrev={() => { if (!photoModal) navModal(-1); }}
+        onNext={() => { if (!photoModal) navModal(1); }}
         hasPrev={navIndex > 0}
         hasNext={navIndex >= 0 && navIndex < navList.length - 1}
-        onClose={handleModalClose}
+        onClose={() => { if (!photoModal) handleModalClose(); }}
+      />
+
+      {/* 参照写真のページ内拡大(絵のモーダルの上に重なる)。撮影メモ表示＋Valueボタン付き */}
+      <Modal
+        isOpen={!!photoModal}
+        imageUrl={photoModal ? photoModal.url : ''}
+        memo={photoModal ? photoModal.memo : ''}
+        isPrivate={true}
+        valueUrl={photoModal ? photoModal.url : ''}
+        onClose={() => setPhotoModal(null)}
       />
 
       {/* 絵→写真の手動紐づけピッカー（オーナー限定）: 使ったリファレンス写真をタップで紐づけ⇄解除 */}
