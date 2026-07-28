@@ -1,6 +1,7 @@
 import { captureEvent } from '../analytics.js';
+import MemoText from './MemoText';
 
-const ImageItem = ({ imageName, baseUrl, onImageClick, adminMode, onDelete, onMemoEdit, onLinkPhotos, memoInfo }) => {
+const ImageItem = ({ imageName, baseUrl, onImageClick, adminMode, onDelete, onMemoEdit, onLinkPhotos, memoInfo, refPhotoUrls = [] }) => {
   const extractTimestamp = (name) => {
     const m = name.match(/(\d{10,13})(?=\.[A-Za-z]+$)/);
     if (!m) return null;
@@ -104,11 +105,28 @@ const ImageItem = ({ imageName, baseUrl, onImageClick, adminMode, onDelete, onMe
         Copy
       </button>
 
-      {/* メモの常時表示（全文）。非公開メモは管理モード時のみ渡ってくる */}
+      {/* 紐づけ済みリファレンス写真の常時表示（管理モード時のみ。モーダルを開かなくても見える） */}
+      {adminMode && refPhotoUrls.length > 0 && (
+        <div className="ref-strip">
+          {refPhotoUrls.map((u, i) => (
+            <img
+              key={i}
+              src={u}
+              alt={`ref ${i + 1}`}
+              loading="lazy"
+              crossOrigin="anonymous"
+              title="Linked reference photo (click to enlarge)"
+              onClick={(e) => { e.stopPropagation(); window.open(u, '_blank', 'noopener'); }}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* メモの常時表示（全文・Markdown）。非公開メモは管理モード時のみ渡ってくる */}
       {memoInfo && memoInfo.memo && (
         <div className="memo-preview" onClick={handleImageClick}>
           {memoInfo.visibility === 'private' && <span className="memo-lock" title="Private memo">Private</span>}
-          {memoInfo.memo}
+          <MemoText text={memoInfo.memo} />
         </div>
       )}
 
