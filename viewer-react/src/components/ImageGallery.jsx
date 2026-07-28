@@ -758,6 +758,12 @@ const ImageGallery = () => {
             onMemoEdit={openMemoEditor}
             onLinkPhotos={openPhotoPicker}
             memoInfo={memosById[imageName]}
+            refPhotoUrls={
+              // 管理モード時: 紐づけ済み参照写真をタイルに常時表示(モーダルを開かなくても見える)
+              admin && photoUrlMap && memosById[imageName]
+                ? (memosById[imageName].refPhotos || []).map(id => photoUrlMap[id]).filter(Boolean)
+                : []
+            }
           />
         ))}
       </Masonry>

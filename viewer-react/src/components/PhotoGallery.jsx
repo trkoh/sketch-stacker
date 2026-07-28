@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Masonry from 'react-masonry-css';
 import Modal from './Modal';
+import MemoText from './MemoText';
 
 // U-P1: リファレンス写真ビュー（管理モード限定）。
 // GET /photos（Basic認証）で一覧＋期限付き presigned URL を取得して表示する。
@@ -209,7 +210,7 @@ const PhotoGallery = ({ admin, apiBase, baseUrl, embedUrl }) => {
             {p.memo && (
               <div className="memo-preview" onClick={() => setModal({ url: p.url, memo: p.memo })}>
                 <span className="memo-lock" title="非公開">🔒</span>
-                {p.memo}
+                <MemoText text={p.memo} />
               </div>
             )}
             {/* 紐づけ済みの絵（公開CDNのサムネイル）。クリックで絵を別タブ表示 */}

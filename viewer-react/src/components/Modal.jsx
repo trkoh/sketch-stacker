@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import MemoText from './MemoText';
 
 // 拡大モーダル。前後ナビ(onPrev/onNext)は ←→キー・左右ボタン・横スワイプの3経路。Escで閉じる。
 const Modal = ({ isOpen, imageUrl, memo, isPrivate, refPhotoUrls = [], onClose, onPrev, onNext, hasPrev, hasNext }) => {
@@ -93,7 +94,7 @@ const Modal = ({ isOpen, imageUrl, memo, isPrivate, refPhotoUrls = [], onClose, 
         {memo && (
           <div className="modal-memo">
             {isPrivate && <div className="modal-memo-private">Private memo</div>}
-            {memo}
+            <MemoText text={memo} />
           </div>
         )}
       </div>
