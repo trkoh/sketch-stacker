@@ -707,11 +707,13 @@ const ImageGallery = () => {
           {!searchActive && allTags.length > 0 && (
             <div className="tag-filter">
               <div className="tag-filter-head">
+                {/* AI生成である明示(#56)は常時表示を維持する。#65のリデザインでツールチップのみに
+                    格下げされたが、ホバーできないスマホでは伝わらないため文言をラベルに戻した */}
                 <span
                   className="tag-filter-hint"
-                  title="Tags are generated automatically by AI (Amazon Bedrock) from each image — not added by hand. Click to filter (multi-select = AND)."
+                  title="タグは画像からAI（Amazon Bedrock）が自動生成したものです。手動では付けていません。クリックで絞り込み（複数選択=AND）。"
                 >
-                  Tags
+                  🤖 AI自動タグ
                 </span>
                 <input
                   className="input"
